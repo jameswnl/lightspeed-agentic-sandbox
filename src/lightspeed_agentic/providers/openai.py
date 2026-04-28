@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -81,7 +82,7 @@ def _ensure_openai_init() -> None:
     from agents.tracing import set_tracing_disabled
 
     set_tracing_disabled(True)
-    enable_verbose_stdout_logging()
+    enable_verbose_stdout_logging()  # type: ignore[no-untyped-call]
     _openai_initialized = True
 
 
@@ -123,7 +124,11 @@ class OpenAIProvider(AgentProvider):
         capabilities = [
             Shell(),
             Filesystem(),
-            Skills(lazy_from=LocalDirLazySkillSource(source=LocalDir(src=skills_dir))),
+            Skills(
+                lazy_from=LocalDirLazySkillSource(
+                    source=LocalDir(src=Path(skills_dir)),
+                )
+            ),
         ]
 
         manifest = Manifest(root=options.cwd)

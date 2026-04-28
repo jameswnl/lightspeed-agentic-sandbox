@@ -119,7 +119,7 @@ class DeepAgentsProvider(AgentProvider):
     async def query(self, options: ProviderQueryOptions) -> AsyncIterator[ProviderEvent]:
         from deepagents import create_deep_agent
         from deepagents.backends.local_shell import LocalShellBackend
-        from langchain_core.messages import AIMessage, ToolMessage
+        from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
         backend = LocalShellBackend(root_dir=options.cwd, inherit_env=True)
         skills_dir = resolve_skills_dir(options.cwd)
@@ -148,7 +148,7 @@ class DeepAgentsProvider(AgentProvider):
         total_output_tokens = 0
 
         async for chunk in agent.astream(
-            {"messages": [("user", options.prompt)]},
+            {"messages": [HumanMessage(content=options.prompt)]},
             config={"configurable": {"thread_id": thread_id}},
             stream_mode="values",
         ):

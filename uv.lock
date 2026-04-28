@@ -1883,8 +1883,15 @@ deepagents = [
     { name = "langchain-openai" },
 ]
 dev = [
+    { name = "claude-agent-sdk" },
+    { name = "deepagents" },
+    { name = "google-adk" },
     { name = "httpx" },
+    { name = "langchain-google-genai" },
+    { name = "langchain-google-vertexai" },
+    { name = "langchain-openai" },
     { name = "mypy" },
+    { name = "openai-agents" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
@@ -1915,6 +1922,7 @@ requires-dist = [
     { name = "langchain-google-vertexai", marker = "extra == 'deepagents'", specifier = ">=3.2.2" },
     { name = "langchain-openai", marker = "extra == 'deepagents'", specifier = ">=1.2.1" },
     { name = "lightspeed-agentic", extras = ["claude", "gemini", "openai", "deepagents"], marker = "extra == 'all'" },
+    { name = "lightspeed-agentic", extras = ["claude", "gemini", "openai", "deepagents"], marker = "extra == 'dev'" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.20.2" },
     { name = "openai-agents", marker = "extra == 'openai'", specifier = ">=0.14.6" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.3" },

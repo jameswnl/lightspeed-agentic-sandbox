@@ -33,11 +33,16 @@ logger = logging.getLogger(__name__)
 
 def _load_skills_toolset(skills_dir: str) -> Any:
     try:
-        from google.adk.skills import list_skills_in_dir
+        from google.adk.skills import list_skills_in_dir, load_skill_from_dir
         from google.adk.tools.skill_toolset import SkillToolset
 
         target = pathlib.Path(resolve_skills_dir(skills_dir))
-        skills = list_skills_in_dir(target)
+        skill_entries = list_skills_in_dir(target)
+        skills = [
+            load_skill_from_dir(target / skill_id)
+            for skill_id in skill_entries
+            if (target / skill_id).is_dir()
+        ]
         if skills:
             return SkillToolset(skills=skills)
     except Exception as e:
@@ -58,7 +63,11 @@ class GeminiProvider(AgentProvider):
         from google.adk.agents.run_config import StreamingMode
         from google.adk.runners import Runner
         from google.adk.sessions import InMemorySessionService
-        from google.adk.tools import exit_loop, google_search, url_context
+        from google.adk.tools import (  # type: ignore[attr-defined]
+            exit_loop,
+            google_search,
+            url_context,
+        )
         from google.adk.tools.bash_tool import ExecuteBashTool
         from google.adk.tools.tool_confirmation import ToolConfirmation
         from google.genai import types
@@ -72,7 +81,7 @@ class GeminiProvider(AgentProvider):
             tool_context.tool_confirmation = ToolConfirmation(confirmed=True)
             return await _orig_run(args=args, tool_context=tool_context)
 
-        bash.run_async = _auto_confirm_run
+        bash.run_async = _auto_confirm_run  # type: ignore[method-assign]
 
         # TODO: investigate more ADK built-in tools:
         # load_artifacts, load_memory, computer_use, file_search, mcp_servers
@@ -108,10 +117,12 @@ class GeminiProvider(AgentProvider):
         if options.output_schema:
             # Bypass ADK's output_schema (routes through broken SetModelResponseTool)
             # and use Gemini's native response_schema directly.
-            agent.generate_content_config.response_mime_type = "application/json"
-            agent.generate_content_config.response_schema = options.output_schema
+            gen_cfg = agent.generate_content_config
+            if gen_cfg is not None:
+                gen_cfg.response_mime_type = "application/json"
+                gen_cfg.response_schema = options.output_schema
 
-        session_service = InMemorySessionService()
+        session_service = InMemorySessionService()  # type: ignore[no-untyped-call]
         runner = Runner(
             app_name="lightspeed",
             agent=agent,
@@ -155,7 +166,7 @@ class GeminiProvider(AgentProvider):
                 if hasattr(part, "function_call") and part.function_call:
                     fc = part.function_call
                     yield ToolCallEvent(
-                        name=fc.name,
+                        name=fc.name or "",
                         input=json.dumps(dict(fc.args) if fc.args else {})[:TOOL_INPUT_MAX_CHARS],
                     )
 

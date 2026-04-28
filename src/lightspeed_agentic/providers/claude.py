@@ -38,6 +38,13 @@ class ClaudeProvider(AgentProvider):
             query,
         )
 
+        output_format: dict[str, object] | None = None
+        if options.output_schema:
+            output_format = {
+                "type": "json_schema",
+                "schema": options.output_schema,
+            }
+
         sdk_options = ClaudeAgentOptions(
             model=options.model,
             max_turns=options.max_turns,
@@ -48,16 +55,7 @@ class ClaudeProvider(AgentProvider):
             cwd=options.cwd,
             skills="all",
             include_partial_messages=True,
-            **(
-                {
-                    "output_format": {
-                        "type": "json_schema",
-                        "schema": options.output_schema,
-                    }
-                }
-                if options.output_schema
-                else {}
-            ),
+            output_format=output_format,
         )
 
         async for msg in query(prompt=options.prompt, options=sdk_options):

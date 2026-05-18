@@ -9,6 +9,7 @@ These specs define WHAT the sandbox runtime must do -- testable behavioral rules
 | [run-api.md](run-api.md) | POST /run endpoint: request/response shapes, context prefix, timeouts, error handling |
 | [provider-contract.md](provider-contract.md) | AgentProvider ABC, event model, structured output, thin-adapter principle, skills delegation |
 | [configuration.md](configuration.md) | Environment variables, provider selection, model resolution, container layout, build system |
+| [health-probes.md](health-probes.md) | Liveness (`/health`) and readiness (`/ready`) endpoints, failure mode audit, probe configuration |
 
 ## Relationship to how/ Specs
 

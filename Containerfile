@@ -45,7 +45,7 @@ RUN if [ -f /cachi2/cachi2.env ]; then \
 # ---------------------------------------------------------------------------
 # origincli stage: provides oc (kubectl is a symlink to oc in this image)
 # ---------------------------------------------------------------------------
-FROM quay.io/openshift/origin-cli:4.21 AS origincli
+FROM registry.redhat.io/openshift4/ose-cli-rhel9:v4.21 AS origincli
 
 # ---------------------------------------------------------------------------
 # Runtime stage: minimal image with only what the agent needs

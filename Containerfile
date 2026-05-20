@@ -58,9 +58,14 @@ WORKDIR /app
 # System packages (resolved from rpms.in.yaml via rpm prefetch).
 # Split into functional groups for readability.
 
-# Claude Code SDK requirements
+# EPEL repo + GPG key (tini lives in EPEL; cachi2 overrides this in hermetic builds)
+COPY epel.repo /etc/yum.repos.d/epel.repo
+COPY RPM-GPG-KEY-EPEL-9 /etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-9
+RUN rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-9
+
+# Claude Code SDK requirements + container init
 RUN dnf install -y --nodocs \
-    bash git wget jq \
+    bash git wget jq tini \
     && dnf clean all
 
 # SRE debugging toolkit
@@ -90,28 +95,21 @@ RUN ln -s /app/node_modules/@anthropic-ai/claude-code/bin/claude.exe /usr/local/
 COPY --from=origincli /usr/bin/oc /usr/bin/oc
 RUN ln -s /usr/bin/oc /usr/bin/kubectl
 
-# Install generic-fetched binaries (ripgrep, dumb-init).
+# Install generic-fetched binaries (ripgrep).
 # In hermetic builds these are at /cachi2/output/deps/generic/.
 # In non-hermetic builds fall back to fetching from the network.
 COPY artifacts.lock.yaml ./
 RUN ARCH=$(uname -m) && \
     GENERIC_DIR="/cachi2/output/deps/generic" && \
     if [ -d "$GENERIC_DIR" ]; then \
-        # ripgrep
         tar -xzf "$GENERIC_DIR/ripgrep-${ARCH}.tar.gz" --strip-components=1 -C /usr/local/bin --wildcards '*/rg' && \
-        chmod +x /usr/local/bin/rg && \
-        # dumb-init
-        cp "$GENERIC_DIR/dumb-init-${ARCH}" /usr/local/bin/dumb-init && \
-        chmod +x /usr/local/bin/dumb-init; \
+        chmod +x /usr/local/bin/rg; \
     else \
         echo "WARN: generic deps dir not found, fetching from network (non-hermetic)" && \
         RG_ARCH=$([ "$ARCH" = "aarch64" ] && echo "aarch64-unknown-linux-gnu" || echo "x86_64-unknown-linux-musl") && \
         curl -sL "https://github.com/BurntSushi/ripgrep/releases/download/15.1.0/ripgrep-15.1.0-${RG_ARCH}.tar.gz" | \
             tar -xz --strip-components=1 -C /usr/local/bin --wildcards '*/rg' && \
-        chmod +x /usr/local/bin/rg && \
-        DUMB_ARCH=$([ "$ARCH" = "aarch64" ] && echo "aarch64" || echo "x86_64") && \
-        curl -sL "https://github.com/Yelp/dumb-init/releases/download/v1.2.5/dumb-init_1.2.5_${DUMB_ARCH}" -o /usr/local/bin/dumb-init && \
-        chmod +x /usr/local/bin/dumb-init; \
+        chmod +x /usr/local/bin/rg; \
     fi
 
 # Copy application source and metadata
@@ -134,7 +132,7 @@ USER 1001:1001
 
 EXPOSE 8080
 
-ENTRYPOINT ["dumb-init", "--"]
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["python3.12", "-m", "uvicorn", "lightspeed_agentic.app:app", "--host", "0.0.0.0", "--port", "8080"]
 
 LABEL name="lightspeed-agentic-sandbox" \

@@ -64,11 +64,16 @@ RUN dnf install -y --nodocs \
     && dnf clean all
 
 # SRE debugging toolkit
+# tcpdump is installed separately with --setopt=strict=0 because it is not
+# available in the UBI9 subset repos used by ci-operator builds (OpenShift CI).
+# Konflux hermetic builds pre-fetch it via the RPM lockfile so the production
+# image still includes tcpdump.
 RUN dnf install -y --nodocs \
     procps-ng iproute bind-utils net-tools openssl \
-    lsof strace tcpdump \
+    lsof strace \
     less vim-minimal findutils file diffutils \
     skopeo unzip tar gzip \
+    && dnf install -y --nodocs --setopt=strict=0 tcpdump \
     && dnf clean all
 
 # Node.js runtime (for claude-code CLI)

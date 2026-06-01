@@ -15,15 +15,33 @@ PROBE_TIMEOUT_SEC = 3.0
 
 # R1 — credential env vars (any listed var non-empty satisfies the check)
 _PROVIDER_CREDENTIAL_VARS: dict[str, list[str]] = {
-    "claude": ["ANTHROPIC_API_KEY"],
-    "gemini": ["GOOGLE_API_KEY", "GEMINI_API_KEY"],
+    "claude": ["ANTHROPIC_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS"],
+    "gemini": ["GOOGLE_API_KEY", "GEMINI_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS"],
     "openai": ["OPENAI_API_KEY"],
 }
 
+
+def _vertex_endpoint_url() -> str:
+    region = os.environ.get("CLOUD_ML_REGION", "us-east5")
+    return f"https://{region}-aiplatform.googleapis.com/"
+
+
+def _claude_probe_url() -> str:
+    if os.environ.get("CLAUDE_CODE_USE_VERTEX") == "1":
+        return _vertex_endpoint_url()
+    return "https://api.anthropic.com/"
+
+
+def _gemini_probe_url() -> str:
+    if os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "").lower() in ("true", "1"):
+        return _vertex_endpoint_url()
+    return "https://generativelanguage.googleapis.com/"
+
+
 # R2 — unauthenticated reachability probe base URLs
 _PROVIDER_PROBE_URL: dict[str, Callable[[], str]] = {
-    "claude": lambda: "https://api.anthropic.com/",
-    "gemini": lambda: "https://generativelanguage.googleapis.com/",
+    "claude": _claude_probe_url,
+    "gemini": _gemini_probe_url,
     "openai": lambda: os.environ.get("OPENAI_BASE_URL") or "https://api.openai.com/",
 }
 
@@ -33,7 +51,7 @@ def _provider_name() -> str | None:
     raw = os.environ.get("LIGHTSPEED_AGENT_PROVIDER")
     if raw is None or not raw.strip():
         return None
-    return raw.strip()
+    return raw.strip().lower()
 
 
 def health_payload() -> dict[str, str]:

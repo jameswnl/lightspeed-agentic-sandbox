@@ -27,12 +27,28 @@ def test_check_provider_env_provider_not_set(monkeypatch: pytest.MonkeyPatch) ->
 def test_check_provider_env_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LIGHTSPEED_AGENT_PROVIDER", "claude")
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    assert check_provider_env() == "error: missing ANTHROPIC_API_KEY"
+    monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS", raising=False)
+    assert "error: missing" in check_provider_env()
 
 
 def test_check_provider_env_present(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LIGHTSPEED_AGENT_PROVIDER", "claude")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    assert check_provider_env() == "ok"
+
+
+def test_check_provider_env_claude_vertex_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LIGHTSPEED_AGENT_PROVIDER", "claude")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "/var/secrets/google/credentials.json")
+    assert check_provider_env() == "ok"
+
+
+def test_check_provider_env_gemini_vertex_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LIGHTSPEED_AGENT_PROVIDER", "gemini")
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "/var/secrets/google/credentials.json")
     assert check_provider_env() == "ok"
 
 
@@ -71,6 +87,44 @@ def test_check_provider_endpoint_openai_base_url(monkeypatch: pytest.MonkeyPatch
     ) as mock_probe:
         assert check_provider_endpoint() == "ok"
     mock_probe.assert_called_once_with("https://custom.example/v1")
+
+
+def test_check_provider_endpoint_claude_vertex(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LIGHTSPEED_AGENT_PROVIDER", "claude")
+    monkeypatch.setenv("CLAUDE_CODE_USE_VERTEX", "1")
+    monkeypatch.setenv("CLOUD_ML_REGION", "europe-west4")
+    with patch(
+        "lightspeed_agentic.health.probe_provider_endpoint",
+        return_value="ok",
+    ) as mock_probe:
+        assert check_provider_endpoint() == "ok"
+    mock_probe.assert_called_once_with("https://europe-west4-aiplatform.googleapis.com/")
+
+
+def test_check_provider_endpoint_claude_vertex_default_region(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LIGHTSPEED_AGENT_PROVIDER", "claude")
+    monkeypatch.setenv("CLAUDE_CODE_USE_VERTEX", "1")
+    monkeypatch.delenv("CLOUD_ML_REGION", raising=False)
+    with patch(
+        "lightspeed_agentic.health.probe_provider_endpoint",
+        return_value="ok",
+    ) as mock_probe:
+        assert check_provider_endpoint() == "ok"
+    mock_probe.assert_called_once_with("https://us-east5-aiplatform.googleapis.com/")
+
+
+def test_check_provider_endpoint_gemini_vertex(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LIGHTSPEED_AGENT_PROVIDER", "gemini")
+    monkeypatch.setenv("GOOGLE_GENAI_USE_VERTEXAI", "true")
+    monkeypatch.setenv("CLOUD_ML_REGION", "us-central1")
+    with patch(
+        "lightspeed_agentic.health.probe_provider_endpoint",
+        return_value="ok",
+    ) as mock_probe:
+        assert check_provider_endpoint() == "ok"
+    mock_probe.assert_called_once_with("https://us-central1-aiplatform.googleapis.com/")
 
 
 @pytest.mark.asyncio

@@ -66,7 +66,10 @@ def test_check_provider_env_anthropic_wrong_cred_rejects(
 
 
 def test_check_provider_env_vertex_anthropic_ok(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "/var/run/secrets/llm-credentials/GOOGLE_APPLICATION_CREDENTIALS")
+    monkeypatch.setenv(
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        "/var/run/secrets/llm-credentials/GOOGLE_APPLICATION_CREDENTIALS",
+    )
     assert check_provider_env(_VERTEX_ANTHROPIC.expected_envs) == "ok"
 
 
@@ -80,7 +83,10 @@ def test_check_provider_env_vertex_anthropic_wrong_cred_rejects(
 
 
 def test_check_provider_env_vertex_google_ok(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "/var/run/secrets/llm-credentials/GOOGLE_APPLICATION_CREDENTIALS")
+    monkeypatch.setenv(
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        "/var/run/secrets/llm-credentials/GOOGLE_APPLICATION_CREDENTIALS",
+    )
     assert check_provider_env(_VERTEX_GOOGLE.expected_envs) == "ok"
 
 

@@ -53,7 +53,11 @@ mkdir -p "$(pwd)/.eval-workspaces"
 for i in "${!PROVIDERS[@]}"; do
     name="${PROVIDERS[$i]}"
     port=$((BASE_PORT + i))
-    agent_provider="$name"
+    case "$name" in
+        claude) agent_provider="anthropic"; model_provider="" ;;
+        gemini) agent_provider="vertex"; model_provider="google" ;;
+        *) agent_provider="$name"; model_provider="" ;;
+    esac
     workdir=$(mktemp -d "$(pwd)/.eval-workspaces/eval-${name}-XXXXXX")
     outdir="$(pwd)/.eval-workspaces/output-${name}"
     mkdir -p "$outdir"
@@ -74,6 +78,7 @@ for i in "${!PROVIDERS[@]}"; do
         -e PYTHONPATH="/app/src:/opt/app-root/lib64/python3.12/site-packages" \
         $GCLOUD_MOUNT \
         -e LIGHTSPEED_PROVIDER="$agent_provider" \
+        -e LIGHTSPEED_MODEL_PROVIDER="$model_provider" \
         -e LIGHTSPEED_SKILLS_DIR="/app/workspace" \
         -e ANTHROPIC_API_KEY \
         -e CLAUDE_CODE_USE_VERTEX \

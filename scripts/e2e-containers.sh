@@ -92,7 +92,18 @@ cleanup() {
 trap cleanup EXIT
 
 provider_to_image_provider() {
-    echo "$1"
+    case "$1" in
+        claude) echo "anthropic" ;;
+        gemini) echo "vertex" ;;
+        *) echo "$1" ;;
+    esac
+}
+
+provider_to_model_provider() {
+    case "$1" in
+        gemini) echo "google" ;;
+        *) echo "" ;;
+    esac
 }
 
 apply_model_override() {
@@ -183,6 +194,11 @@ run_one_host() {
 
     prepare_e2e_skills_workspace
     export LIGHTSPEED_PROVIDER="${agent_provider}"
+    local mp
+    mp=$(provider_to_model_provider "${provider}")
+    if [ -n "${mp}" ]; then
+        export LIGHTSPEED_MODEL_PROVIDER="${mp}"
+    fi
     export LIGHTSPEED_SKILLS_DIR="${E2E_SKILLS_WORKDIR}"
 
     echo "e2e: starting uvicorn (host) for ${provider} (image provider=${agent_provider}) on :${host_port}..."
@@ -254,6 +270,7 @@ run_one() {
         -e PYTHONPATH="/app/src:/opt/app-root/lib64/python3.12/site-packages" \
         ${GCLOUD_MOUNT} \
         -e LIGHTSPEED_PROVIDER="${agent_provider}" \
+        -e LIGHTSPEED_MODEL_PROVIDER="$(provider_to_model_provider "${provider}")" \
         -e LIGHTSPEED_SKILLS_DIR="/app/skills" \
         -e E2E_OUTPUT_DIR="/app/e2e-output" \
         -e ANTHROPIC_API_KEY \

@@ -67,6 +67,9 @@ requirements: pyproject.toml ## Generate requirements.txt files for Konflux herm
 	$(UV) pip compile pyproject.toml --extra all --extra eval \
 		-o requirements.aarch64.txt --generate-hashes \
 		--python-platform aarch64-unknown-linux-gnu --upgrade
+	python3 scripts/gen-build-deps.py \
+		requirements-build.txt \
+		requirements.x86_64.txt requirements.aarch64.txt
 
 bump-deps: ## Upgrade all dependencies and regenerate requirements
 	$(UV) lock --upgrade

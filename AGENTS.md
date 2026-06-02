@@ -169,7 +169,7 @@ starts, with no network access during the build itself.
 |---|---|---|
 | `requirements.x86_64.txt` | Python deps with hashes (x86_64) | `make requirements` |
 | `requirements.aarch64.txt` | Python deps with hashes (aarch64) | `make requirements` |
-| `requirements-build.txt` | Build-time deps (empty — we use wheels) | N/A |
+| `requirements-build.txt` | Build-time deps for source distributions | `make requirements` |
 | `rpms.in.yaml` | System RPM package list | Edit manually |
 | `rpms.lock.yaml` | Resolved RPM lockfile | `make rpm-lockfile` |
 | `ubi.repo` | UBI 9 repo definitions for RPM resolution | Rarely changes |

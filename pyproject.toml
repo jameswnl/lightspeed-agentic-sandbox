@@ -53,6 +53,7 @@ select = ["A", "ARG", "ASYNC", "B", "E", "F", "I", "N", "PT", "RUF", "S", "SIM",
 "evals/**/*.py" = ["S101"]
 "src/lightspeed_agentic/routes/chat.py" = ["N815"]
 "src/lightspeed_agentic/routes/models.py" = ["N815"]
+"scripts/**/*.py" = ["S603", "S607"]
 
 [tool.mypy]
 python_version = "3.12"

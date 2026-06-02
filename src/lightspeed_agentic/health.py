@@ -46,14 +46,6 @@ _PROVIDER_PROBE_URL: dict[str, Callable[[], str]] = {
 }
 
 
-def _provider_name() -> str | None:
-    """Provider from env; None if unset or blank (readiness treats that as not ready)."""
-    raw = os.environ.get("LIGHTSPEED_AGENT_PROVIDER")
-    if raw is None or not raw.strip():
-        return None
-    return raw.strip().lower()
-
-
 def health_payload() -> dict[str, str]:
     return {"status": "ok"}
 
@@ -66,14 +58,13 @@ def register_health_routes(app: FastAPI) -> None:
         return health_payload()
 
 
-def check_provider_env(provider: str | None = None) -> str:
+def check_provider_env(provider: str | None) -> str:
     """R1: required credential env var(s) present and non-empty."""
-    name = provider if provider is not None else _provider_name()
-    if name is None:
-        return "error: LIGHTSPEED_AGENT_PROVIDER not set"
-    env_vars = _PROVIDER_CREDENTIAL_VARS.get(name)
+    if provider is None:
+        return "error: provider not configured"
+    env_vars = _PROVIDER_CREDENTIAL_VARS.get(provider)
     if env_vars is None:
-        return f"error: unknown provider {name!r}"
+        return f"error: unknown provider {provider!r}"
     if any(os.environ.get(var, "").strip() for var in env_vars):
         return "ok"
     if len(env_vars) == 1:
@@ -96,20 +87,19 @@ def probe_provider_endpoint(url: str, timeout: float = PROBE_TIMEOUT_SEC) -> str
         return f"error: {exc}"
 
 
-def check_provider_endpoint(provider: str | None = None) -> str:
-    name = provider if provider is not None else _provider_name()
-    if name is None:
-        return "error: LIGHTSPEED_AGENT_PROVIDER not set"
-    url_fn = _PROVIDER_PROBE_URL.get(name)
+def check_provider_endpoint(provider: str | None) -> str:
+    if provider is None:
+        return "error: provider not configured"
+    url_fn = _PROVIDER_PROBE_URL.get(provider)
     if url_fn is None:
-        return f"error: unknown provider {name!r}"
+        return f"error: unknown provider {provider!r}"
     url = url_fn().strip()
     if not url:
         return "error: empty probe URL"
     return probe_provider_endpoint(url)
 
 
-def run_readiness_checks(provider: str | None = None) -> tuple[bool, dict[str, str]]:
+def run_readiness_checks(provider: str | None) -> tuple[bool, dict[str, str]]:
     checks = {
         "provider_env": check_provider_env(provider),
         "provider_endpoint": check_provider_endpoint(provider),
@@ -117,17 +107,17 @@ def run_readiness_checks(provider: str | None = None) -> tuple[bool, dict[str, s
     return all(status == "ok" for status in checks.values()), checks
 
 
-def ready_response() -> tuple[int, dict[str, object]]:
-    ok, checks = run_readiness_checks()
+def ready_response(provider: str | None) -> tuple[int, dict[str, object]]:
+    ok, checks = run_readiness_checks(provider)
     if ok:
         return 200, {"status": "ok"}
     return 503, {"status": "error", "checks": checks}
 
 
-def register_ready_route(app: FastAPI) -> None:
+def register_ready_route(app: FastAPI, *, sdk_name: str | None = None) -> None:
     """Register GET /ready (readiness)."""
 
     @app.get("/ready")
     def ready() -> JSONResponse:
-        status_code, body = ready_response()
+        status_code, body = ready_response(sdk_name)
         return JSONResponse(status_code=status_code, content=body)

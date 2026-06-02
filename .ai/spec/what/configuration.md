@@ -6,27 +6,52 @@ Cross-references: how options are consumed in code → `how/provider-architectur
 
 ## Behavioral Rules
 
-1. **Provider selection.** Process environment variable `LIGHTSPEED_AGENT_PROVIDER` selects the backend. Supported logical values: `claude`, `gemini`, `openai`. Unknown values are rejected at startup when constructing the provider.
+1. **Operator env var contract.** The operator sets generic `LIGHTSPEED_*` env vars on the sandbox pod template. The sandbox MUST NOT depend on the operator setting any SDK-specific env vars. The operator sets:
 
-2. **Default provider.** When `LIGHTSPEED_AGENT_PROVIDER` is unset, the provider defaults to Claude.
+    | Env var | Required | Description |
+    |---|---|---|
+    | `LIGHTSPEED_PROVIDER` | Yes | Hosting backend: `anthropic`, `vertex`, `openai`, `azure`, `bedrock` |
+    | `LIGHTSPEED_MODEL` | Yes | Model identifier (e.g. `claude-sonnet-4-20250514`) |
+    | `LIGHTSPEED_MODEL_PROVIDER` | When provider=`vertex` | Model family on Vertex: `Anthropic`, `Google`, `OpenAI` |
+    | `LIGHTSPEED_MODE` | Yes | Workflow step name |
+    | `LIGHTSPEED_PROVIDER_URL` | No | Optional API endpoint override |
+    | `LIGHTSPEED_PROVIDER_PROJECT` | No | Cloud project ID (Vertex) |
+    | `LIGHTSPEED_PROVIDER_REGION` | No | Cloud region (Vertex, Bedrock) |
+    | `LIGHTSPEED_PROVIDER_API_VERSION` | No | API version (Azure) |
 
-3. **Model resolution — Claude.** Read `ANTHROPIC_MODEL`; if unset, use the package default model constant for Claude.
+    Credentials are mounted via `envFrom` (all secret keys as env vars) AND as files at `/var/run/secrets/llm-credentials/`.
 
-4. **Model resolution — Gemini.** Read `GEMINI_MODEL`; if unset, fall back to the same package default model constant used for Claude-branded defaults.
+2. **Provider configuration mapping.** On startup, the sandbox MUST read the generic env vars from rule 1 and set the SDK-specific env vars required by each provider SDK. This mapping runs before the FastAPI app starts. The mapping logic:
 
-5. **Model resolution — OpenAI.** Read `OPENAI_MODEL`; if unset, fall back to that package default model constant.
+    | `LIGHTSPEED_PROVIDER` | `LIGHTSPEED_MODEL_PROVIDER` | SDK | SDK env vars set |
+    |---|---|---|---|
+    | `anthropic` | *(derived)* | Claude | `LIGHTSPEED_AGENT_PROVIDER=claude`, `ANTHROPIC_MODEL` |
+    | `vertex` | `Anthropic` | Claude | `LIGHTSPEED_AGENT_PROVIDER=claude`, `ANTHROPIC_MODEL`, `CLAUDE_CODE_USE_VERTEX=1`, `ANTHROPIC_VERTEX_PROJECT_ID`, `CLOUD_ML_REGION`, `GOOGLE_APPLICATION_CREDENTIALS` |
+    | `vertex` | `Google` | Gemini | `LIGHTSPEED_AGENT_PROVIDER=gemini`, `GEMINI_MODEL`, `GOOGLE_GENAI_USE_VERTEXAI=true` |
+    | `vertex` | `OpenAI` | OpenAI | `LIGHTSPEED_AGENT_PROVIDER=openai`, `OPENAI_MODEL`, `OPENAI_BASE_URL` |
+    | `openai` | *(derived)* | OpenAI | `LIGHTSPEED_AGENT_PROVIDER=openai`, `OPENAI_MODEL` |
+    | `azure` | *(derived)* | OpenAI | `LIGHTSPEED_AGENT_PROVIDER=openai`, `OPENAI_MODEL`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_VERSION` |
+    | `bedrock` | *(derived)* | Claude | `LIGHTSPEED_AGENT_PROVIDER=claude`, `ANTHROPIC_MODEL`, `CLAUDE_CODE_USE_BEDROCK=1`, `AWS_REGION` |
+
+    `LIGHTSPEED_PROVIDER_URL` MUST be mapped to the SDK-appropriate URL env var when set (e.g. `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`). `LIGHTSPEED_PROVIDER_PROJECT` and `LIGHTSPEED_PROVIDER_REGION` MUST be mapped to the provider-specific project/region vars. Credential files at `/var/run/secrets/llm-credentials/` MUST be referenced via `GOOGLE_APPLICATION_CREDENTIALS` for Vertex providers that require file-based credentials.
+
+3. **Provider selection.** Internal env var `LIGHTSPEED_AGENT_PROVIDER` selects the backend SDK. Supported logical values: `claude`, `gemini`, `openai`. This var is set by the provider configuration mapping (rule 2), not by the operator. Unknown values are rejected at startup when constructing the provider.
+
+4. **Default provider.** When `LIGHTSPEED_PROVIDER` is unset and `LIGHTSPEED_AGENT_PROVIDER` is unset, the provider defaults to Claude.
+
+5. **Model resolution.** `LIGHTSPEED_MODEL` is the canonical model input. The provider configuration mapping (rule 2) sets the SDK-specific model var (`ANTHROPIC_MODEL`, `GEMINI_MODEL`, or `OPENAI_MODEL`) from `LIGHTSPEED_MODEL`. SDK-specific model vars MAY also be read directly for backward compatibility when `LIGHTSPEED_MODEL` is unset; if all are unset, use the package default model constant.
 
 6. **Router override.** Callers of the library `build_router` may pass an explicit `model` string; when provided, it overrides environment-based resolution for that router instance.
 
 7. **Skills directory.** `LIGHTSPEED_SKILLS_DIR` sets the filesystem root for skills and provider `cwd`. Default when unset is the container default path under `/app`.
 
-8. **Provider credentials.** API authentication uses the conventional env vars expected by each vendor SDK (Anthropic, Google/Gemini, OpenAI). The sandbox does not define alternate names beyond what adapters read for routing (e.g., Gemini API key fallbacks).
+8. **Provider credentials.** API authentication uses the conventional env vars expected by each vendor SDK (Anthropic, Google/Gemini, OpenAI). These are populated from the credentials secret mounted via `envFrom` by the operator, and optionally from the file mount at `/var/run/secrets/llm-credentials/` for file-based credentials. The sandbox configuration mapping (rule 2) sets any additional credential-related env vars (e.g. `GOOGLE_APPLICATION_CREDENTIALS` path).
 
-9. **Vertex / Google GenAI.** `GOOGLE_GENAI_USE_VERTEXAI` toggles Vertex behavior for the Gemini adapter (tool composition rules per `provider-contract.md`).
+9. **Vertex / Google GenAI.** `GOOGLE_GENAI_USE_VERTEXAI` toggles Vertex behavior for the Gemini adapter (tool composition rules per `provider-contract.md`). Set by the configuration mapping when `LIGHTSPEED_PROVIDER=vertex` and `LIGHTSPEED_MODEL_PROVIDER=Google`.
 
-10. **OpenAI base URL.** `OPENAI_BASE_URL` overrides the OpenAI client base URL when set.
+10. **OpenAI base URL.** `OPENAI_BASE_URL` overrides the OpenAI client base URL when set. Mapped from `LIGHTSPEED_PROVIDER_URL` by the configuration mapping for `openai` and `vertex`/`OpenAI` providers.
 
-11. **Claude via Vertex.** `CLAUDE_CODE_USE_VERTEX` gates Vertex-hosted Claude (consumed by the Claude agent SDK / Claude Code runtime). Project and region strings are read from `ANTHROPIC_VERTEX_PROJECT_ID` and `CLOUD_ML_REGION`.
+11. **Claude via Vertex.** `CLAUDE_CODE_USE_VERTEX` gates Vertex-hosted Claude (consumed by the Claude agent SDK / Claude Code runtime). Set by the configuration mapping when `LIGHTSPEED_PROVIDER=vertex` and `LIGHTSPEED_MODEL_PROVIDER=Anthropic`. Project and region are mapped from `LIGHTSPEED_PROVIDER_PROJECT` and `LIGHTSPEED_PROVIDER_REGION` to `ANTHROPIC_VERTEX_PROJECT_ID` and `CLOUD_ML_REGION`.
 
 12. **Router defaults — `max_turns`.** The router supplies a built-in default maximum turn count to provider options when routes are registered (not exposed on `RunRequest`).
 
@@ -34,7 +59,7 @@ Cross-references: how options are consumed in code → `how/provider-architectur
 
 14. **Process entry.** The container process invokes Uvicorn serving the FastAPI app on TCP port `8080` on all interfaces.
 
-15. **Container filesystem layout.** A read-only skills mount path, a writable per-pod workspace path under system temp, and a writable home directory path for the non-root runtime user are provisioned with ownership for that UID.
+15. **Container filesystem layout.** A read-only skills mount path, a writable per-pod workspace path under system temp, and a writable home directory path for the non-root runtime user are provisioned with ownership for that UID. LLM credential files are mounted read-only at `/var/run/secrets/llm-credentials/`.
 
 16. **Python load path.** Runtime sets process environment so application source under `/app` and installed site-packages are on `PYTHONPATH` as defined in the image.
 
@@ -48,24 +73,36 @@ Cross-references: how options are consumed in code → `how/provider-architectur
 
 | Variable / field | Role |
 |------------------|------|
-| `LIGHTSPEED_AGENT_PROVIDER` | Selects agent backend (see rule 1). |
-| `ANTHROPIC_MODEL`, `GEMINI_MODEL`, `OPENAI_MODEL` | Per-provider model ID override. |
+| `LIGHTSPEED_PROVIDER` | Hosting backend from operator (see rule 1). Replaces direct SDK selection. |
+| `LIGHTSPEED_MODEL` | Model identifier from operator (see rule 1). |
+| `LIGHTSPEED_MODEL_PROVIDER` | Model family on Vertex from operator (see rule 1). |
+| `LIGHTSPEED_MODE` | Workflow step from operator (see rule 1). |
+| `LIGHTSPEED_PROVIDER_URL` | Optional API endpoint override from operator (see rule 1). |
+| `LIGHTSPEED_PROVIDER_PROJECT` | Cloud project ID from operator (see rule 1). |
+| `LIGHTSPEED_PROVIDER_REGION` | Cloud region from operator (see rule 1). |
+| `LIGHTSPEED_PROVIDER_API_VERSION` | API version from operator (see rule 1). |
+| `LIGHTSPEED_AGENT_PROVIDER` | Internal: SDK backend (`claude`, `gemini`, `openai`). Set by configuration mapping (rule 2), not operator. |
+| `ANTHROPIC_MODEL`, `GEMINI_MODEL`, `OPENAI_MODEL` | Internal: SDK-specific model vars. Set by configuration mapping (rule 2), not operator. |
 | `LIGHTSPEED_SKILLS_DIR` | Skill root and provider working directory default. |
-| `ANTHROPIC_API_KEY` | Claude SDK credential (when not using Vertex mode). |
-| `GOOGLE_API_KEY`, `GEMINI_API_KEY` | Google GenAI credential for Gemini. |
-| `OPENAI_API_KEY` | OpenAI SDK credential. |
-| `GOOGLE_GENAI_USE_VERTEXAI` | Vertex mode for Gemini adapter. |
-| `ANTHROPIC_VERTEX_PROJECT_ID`, `CLOUD_ML_REGION` | Vertex project/region for Claude via Vertex. |
-| `CLAUDE_CODE_USE_VERTEX` | Enables Vertex-hosted Claude when set to sentinel value `1`. |
-| `OPENAI_BASE_URL` | OpenAI-compatible endpoint override. |
+| `ANTHROPIC_API_KEY` | Claude SDK credential (from credentials secret envFrom). |
+| `GOOGLE_API_KEY`, `GEMINI_API_KEY` | Google GenAI credential (from credentials secret envFrom). |
+| `OPENAI_API_KEY` | OpenAI SDK credential (from credentials secret envFrom). |
+| `GOOGLE_GENAI_USE_VERTEXAI` | Internal: Vertex mode for Gemini adapter. Set by configuration mapping. |
+| `ANTHROPIC_VERTEX_PROJECT_ID`, `CLOUD_ML_REGION` | Internal: Vertex project/region for Claude via Vertex. Set by configuration mapping. |
+| `CLAUDE_CODE_USE_VERTEX` | Internal: Vertex-hosted Claude. Set by configuration mapping. |
+| `CLAUDE_CODE_USE_BEDROCK` | Internal: Bedrock-hosted Claude. Set by configuration mapping. |
+| `OPENAI_BASE_URL` | Internal: OpenAI-compatible endpoint. Set by configuration mapping. |
+| `/var/run/secrets/llm-credentials/` | LLM credential files mounted by operator (unconditional). |
 | `build_router(..., skills_dir=..., model=..., max_turns=..., default_timeout_ms=...)` | Library-level defaults when embedding the router. |
 
 ## Constraints
 
 - `RunRequest` does not carry provider name, model, max turns, or budget; changing those requires env vars, router constructor args, or future API extensions.
 - Optional Python extras gate which provider SDKs are installed in a given environment; the image recipe installs all extras.
+- Bedrock currently assumes Claude SDK. When Bedrock support for other model families is needed, a `modelProvider` field should be added to the `AWSBedrockConfig` CRD (similar to `googleCloudVertex.modelProvider`).
 
 ## Planned Changes
 
+- [OLS-3153] **Operator-sandbox env var contract**: generic `LIGHTSPEED_*` env vars replace SDK-specific env vars set by operator. Sandbox handles all SDK-specific mapping via configuration mapping (rule 2).
 - TLS termination, mTLS, and network policies for operator-to-sandbox traffic. [PLANNED: OLS-3038–OLS-3043]
 - Konflux pipeline and lockfile policy updates as Red Hat platform requirements evolve. [PLANNED: OLS-2894]

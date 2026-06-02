@@ -61,10 +61,10 @@ Cross-references: HTTP mapping of prompts and timeouts → `run-api.md`. Env and
 | Mechanism | Purpose |
 |-----------|---------|
 | `ProviderQueryOptions.*` | All option fields listed above (set by router, not raw HTTP for most fields). |
-| `GOOGLE_GENAI_USE_VERTEXAI` | Gemini: Vertex vs consumer API behavior and tool mix. |
-| `OPENAI_BASE_URL` | OpenAI-compatible API endpoint override. |
-| `GOOGLE_API_KEY`, `GEMINI_API_KEY` | Gemini credential and routing. |
-| `CLAUDE_CODE_USE_VERTEX`, `ANTHROPIC_VERTEX_PROJECT_ID`, `CLOUD_ML_REGION` | Claude via Vertex (Claude agent SDK / Claude Code). |
+| `GOOGLE_GENAI_USE_VERTEXAI` | Gemini: Vertex vs consumer API behavior and tool mix. Set internally by configuration mapping (see `configuration.md` rule 2), not by operator. |
+| `OPENAI_BASE_URL` | OpenAI-compatible API endpoint override. Set internally by configuration mapping, not by operator. |
+| `GOOGLE_API_KEY`, `GEMINI_API_KEY` | Gemini credential and routing. Populated from credentials secret envFrom. |
+| `CLAUDE_CODE_USE_VERTEX`, `ANTHROPIC_VERTEX_PROJECT_ID`, `CLOUD_ML_REGION` | Claude via Vertex. Set internally by configuration mapping, not by operator. |
 
 ## Constraints
 
@@ -73,6 +73,7 @@ Cross-references: HTTP mapping of prompts and timeouts → `run-api.md`. Env and
 
 ## Planned Changes
 
+- [OLS-3153] **Operator-sandbox env var contract**: all SDK-specific env vars are now set by the sandbox's configuration mapping layer, not by the operator. See `configuration.md` rules 1–2.
 - Parity improvements across providers (tools, streaming, structured output edge cases). [PLANNED: OLS-3047–OLS-3053]
 - BYOK and RAG integration hooks without breaking the thin-adapter rule. [PLANNED: OLS-3054–OLS-3057]
 - Align operator-passed `allowedTools` and `llm` with `ProviderQueryOptions`. [PLANNED: OLS-3033]

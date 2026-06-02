@@ -105,6 +105,9 @@ def test_vertex_google(monkeypatch: pytest.MonkeyPatch) -> None:
     assert os.environ["GOOGLE_GENAI_USE_VERTEXAI"] == "true"
     assert os.environ["GOOGLE_CLOUD_PROJECT"] == "my-project"
     assert os.environ["GOOGLE_CLOUD_LOCATION"] == "us-central1"
+    assert os.environ["GOOGLE_APPLICATION_CREDENTIALS"] == (
+        "/var/run/secrets/llm-credentials/GOOGLE_APPLICATION_CREDENTIALS"
+    )
 
 
 def test_vertex_openai(monkeypatch: pytest.MonkeyPatch) -> None:

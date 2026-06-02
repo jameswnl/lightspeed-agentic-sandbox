@@ -59,6 +59,10 @@ def _resolve_vertex(
             _setenv("GOOGLE_GENAI_USE_VERTEXAI", "true")
             _setenv_if("GOOGLE_CLOUD_PROJECT", project)
             _setenv_if("GOOGLE_CLOUD_LOCATION", region)
+            _setenv(
+                "GOOGLE_APPLICATION_CREDENTIALS",
+                f"{LLM_CREDENTIALS_PATH}/GOOGLE_APPLICATION_CREDENTIALS",
+            )
             return "gemini"
         case "OpenAI":
             _setenv_if("OPENAI_MODEL", model)

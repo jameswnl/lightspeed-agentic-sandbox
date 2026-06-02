@@ -124,6 +124,9 @@ def test_vertex_openai(monkeypatch: pytest.MonkeyPatch) -> None:
     assert sdk.name == "openai"
     assert os.environ["OPENAI_MODEL"] == "gpt-4.1"
     assert os.environ["OPENAI_BASE_URL"] == "https://vertex-openai.example.com"
+    assert os.environ["GOOGLE_APPLICATION_CREDENTIALS"] == (
+        "/var/run/secrets/llm-credentials/GOOGLE_APPLICATION_CREDENTIALS"
+    )
 
 
 def test_openai(monkeypatch: pytest.MonkeyPatch) -> None:

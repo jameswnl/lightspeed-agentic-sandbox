@@ -42,6 +42,12 @@ _OPENAI_DIRECT = ResolvedSDK(
     "https://api.openai.com/",
 )
 
+_BEDROCK = ResolvedSDK(
+    "claude",
+    ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"),
+    "https://bedrock-runtime.us-east-1.amazonaws.com/",
+)
+
 
 # --- R1: credential env checks ---
 
@@ -107,6 +113,21 @@ def test_check_provider_env_openai_ok(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_check_provider_env_openai_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     assert "error: missing" in check_provider_env(_OPENAI_DIRECT.expected_envs)
+
+
+def test_check_provider_env_bedrock_ok(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "AKIA...")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "secret")
+    assert check_provider_env(_BEDROCK.expected_envs) == "ok"
+
+
+def test_check_provider_env_bedrock_partial_rejects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Bedrock with only one of the two required AWS vars must fail."""
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "AKIA...")
+    monkeypatch.delenv("AWS_SECRET_ACCESS_KEY", raising=False)
+    assert "error: missing" in check_provider_env(_BEDROCK.expected_envs)
 
 
 # --- R2: endpoint reachability ---

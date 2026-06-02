@@ -12,11 +12,15 @@ RUNTIME="${CONTAINER_RUNTIME:-$(command -v podman 2>/dev/null || command -v dock
 BASE_PORT=18080
 EVAL_ARGS=("$@")
 
+LLM_CREDS_PATH="/var/run/secrets/llm-credentials"
 GCLOUD_ADC="$HOME/.config/gcloud/application_default_credentials.json"
 GCLOUD_MOUNT=""
 if [ -f "$GCLOUD_ADC" ]; then
-    GCLOUD_MOUNT="-v $GCLOUD_ADC:/tmp/gcloud-adc.json:ro,Z -e GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcloud-adc.json"
+    GCLOUD_MOUNT="-v $GCLOUD_ADC:${LLM_CREDS_PATH}/GOOGLE_APPLICATION_CREDENTIALS:ro,Z"
 fi
+
+VERTEX_PROJECT="${ANTHROPIC_VERTEX_PROJECT_ID:-${GOOGLE_CLOUD_PROJECT:-$(gcloud config get-value project 2>/dev/null || true)}}"
+VERTEX_REGION="${CLOUD_ML_REGION:-${GOOGLE_CLOUD_LOCATION:-us-east5}}"
 
 PROVIDERS=("claude" "gemini" "openai")
 CONTAINERS=()
@@ -37,12 +41,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Map provider names to model env var overrides
 model_env() {
     case "$1" in
-        claude) echo "-e ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-4-6}" ;;
-        gemini) echo "-e GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.1-pro-preview}" ;;
-        openai) echo "-e OPENAI_MODEL=${OPENAI_MODEL:-gpt-5.4}" ;;
+        claude) echo "-e LIGHTSPEED_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-4-6}" ;;
+        gemini) echo "-e LIGHTSPEED_MODEL=${GEMINI_MODEL:-gemini-3.1-pro-preview}" ;;
+        openai) echo "-e LIGHTSPEED_MODEL=${OPENAI_MODEL:-gpt-5.4}" ;;
     esac
 }
 
@@ -53,11 +56,15 @@ mkdir -p "$(pwd)/.eval-workspaces"
 for i in "${!PROVIDERS[@]}"; do
     name="${PROVIDERS[$i]}"
     port=$((BASE_PORT + i))
-    case "$name" in
-        claude) agent_provider="anthropic"; model_provider="" ;;
-        gemini) agent_provider="vertex"; model_provider="google" ;;
-        *) agent_provider="$name"; model_provider="" ;;
-    esac
+    if [ -n "${GCLOUD_MOUNT}" ] && [[ "$name" == "claude" ]]; then
+        agent_provider="vertex"; model_provider="anthropic"
+    else
+        case "$name" in
+            claude) agent_provider="anthropic"; model_provider="" ;;
+            gemini) agent_provider="vertex"; model_provider="google" ;;
+            *) agent_provider="$name"; model_provider="" ;;
+        esac
+    fi
     workdir=$(mktemp -d "$(pwd)/.eval-workspaces/eval-${name}-XXXXXX")
     outdir="$(pwd)/.eval-workspaces/output-${name}"
     mkdir -p "$outdir"
@@ -79,18 +86,14 @@ for i in "${!PROVIDERS[@]}"; do
         $GCLOUD_MOUNT \
         -e LIGHTSPEED_PROVIDER="$agent_provider" \
         -e LIGHTSPEED_MODEL_PROVIDER="$model_provider" \
+        -e LIGHTSPEED_PROVIDER_URL="${OPENAI_BASE_URL:-}" \
+        -e LIGHTSPEED_PROVIDER_PROJECT="${VERTEX_PROJECT:-}" \
+        -e LIGHTSPEED_PROVIDER_REGION="${VERTEX_REGION:-}" \
         -e LIGHTSPEED_SKILLS_DIR="/app/workspace" \
         -e ANTHROPIC_API_KEY \
-        -e CLAUDE_CODE_USE_VERTEX \
-        -e ANTHROPIC_VERTEX_PROJECT_ID \
-        -e CLOUD_ML_REGION \
-        -e GOOGLE_API_KEY \
-        -e GEMINI_API_KEY \
         -e OPENAI_API_KEY \
-        -e OPENAI_BASE_URL \
         -e AWS_ACCESS_KEY_ID \
         -e AWS_SECRET_ACCESS_KEY \
-        -e AWS_REGION \
         $(model_env "$name") \
         "$IMAGE")
 

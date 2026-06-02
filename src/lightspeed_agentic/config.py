@@ -103,6 +103,10 @@ def _resolve_vertex(
         case "openai":
             _setenv_if_value("OPENAI_MODEL", model)
             _setenv_if_value("OPENAI_BASE_URL", url)
+            _setenv(
+                "GOOGLE_APPLICATION_CREDENTIALS",
+                f"{LLM_CREDENTIALS_PATH}/GOOGLE_APPLICATION_CREDENTIALS",
+            )
             return ResolvedSDK(
                 "openai",
                 ("GOOGLE_APPLICATION_CREDENTIALS",),

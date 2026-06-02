@@ -28,12 +28,11 @@ def register_health_routes(app: FastAPI) -> None:
 
 
 def check_provider_env(expected_envs: tuple[str, ...]) -> str:
-    """R1: required credential env var(s) present and non-empty."""
-    if any(os.environ.get(var, "").strip() for var in expected_envs):
+    """R1: all required credential env var(s) must be present and non-empty."""
+    missing = [var for var in expected_envs if not os.environ.get(var, "").strip()]
+    if not missing:
         return "ok"
-    if len(expected_envs) == 1:
-        return f"error: missing {expected_envs[0]}"
-    return f"error: missing {' or '.join(expected_envs)}"
+    return f"error: missing {', '.join(missing)}"
 
 
 def probe_provider_endpoint(url: str, timeout: float = PROBE_TIMEOUT_SEC) -> str:

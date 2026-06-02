@@ -93,7 +93,9 @@ trap cleanup EXIT
 
 provider_to_image_provider() {
     case "$1" in
-        claude) echo "anthropic" ;;
+        claude)
+            if [ -n "${GCLOUD_MOUNT}" ]; then echo "vertex"; else echo "anthropic"; fi
+            ;;
         gemini) echo "vertex" ;;
         *) echo "$1" ;;
     esac
@@ -101,6 +103,9 @@ provider_to_image_provider() {
 
 provider_to_model_provider() {
     case "$1" in
+        claude)
+            if [ -n "${GCLOUD_MOUNT}" ]; then echo "anthropic"; else echo ""; fi
+            ;;
         gemini) echo "google" ;;
         *) echo "" ;;
     esac
@@ -123,9 +128,9 @@ apply_model_override() {
 model_env_var() {
     local provider="$1"
     case "${provider}" in
-        claude) printf '%s' "ANTHROPIC_MODEL=${ANTHROPIC_MODEL}" ;;
-        gemini) printf '%s' "GEMINI_MODEL=${GEMINI_MODEL}" ;;
-        openai) printf '%s' "OPENAI_MODEL=${OPENAI_MODEL}" ;;
+        claude) printf '%s' "LIGHTSPEED_MODEL=${ANTHROPIC_MODEL:-}" ;;
+        gemini) printf '%s' "LIGHTSPEED_MODEL=${GEMINI_MODEL:-}" ;;
+        openai) printf '%s' "LIGHTSPEED_MODEL=${OPENAI_MODEL:-}" ;;
         *)
             echo "e2e: unknown provider: ${provider}" >&2
             exit 1
@@ -144,6 +149,7 @@ prepare_e2e_skills_workspace() {
     chmod -R a+rwX "${E2E_SKILLS_WORKDIR}"
 }
 
+LLM_CREDS_PATH="/var/run/secrets/llm-credentials"
 GCLOUD_ADC="${HOME}/.config/gcloud/application_default_credentials.json"
 GCLOUD_MOUNT=""
 GCLOUD_TMP=""
@@ -152,19 +158,13 @@ if [ -f "${GCLOUD_ADC}" ]; then
     GCLOUD_TMP="$(mktemp /tmp/gcloud-adc-XXXXXX.json)"
     cp "${GCLOUD_ADC}" "${GCLOUD_TMP}"
     chmod 644 "${GCLOUD_TMP}"
-    GCLOUD_MOUNT="-v ${GCLOUD_TMP}:/tmp/gcloud-adc.json:ro,Z -e GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcloud-adc.json"
-
-    # Auto-enable Vertex AI when ADC is present but no Gemini API key.
-    # google-genai / google-adk need GOOGLE_GENAI_USE_VERTEXAI + project to use ADC.
-    if [[ -z "${GOOGLE_API_KEY:-}" && -z "${GEMINI_API_KEY:-}" ]]; then
-        export GOOGLE_GENAI_USE_VERTEXAI="${GOOGLE_GENAI_USE_VERTEXAI:-TRUE}"
-        if [[ -z "${GOOGLE_CLOUD_PROJECT:-}" ]]; then
-            GOOGLE_CLOUD_PROJECT="${ANTHROPIC_VERTEX_PROJECT_ID:-$(gcloud config get-value project 2>/dev/null || true)}"
-            export GOOGLE_CLOUD_PROJECT
-        fi
-        export GOOGLE_CLOUD_LOCATION="${GOOGLE_CLOUD_LOCATION:-${CLOUD_ML_REGION:-us-east5}}"
-    fi
+    # Mount at the operator-expected credential path so config.py can find it.
+    GCLOUD_MOUNT="-v ${GCLOUD_TMP}:${LLM_CREDS_PATH}/GOOGLE_APPLICATION_CREDENTIALS:ro,Z"
 fi
+
+# Derive LIGHTSPEED_* values from legacy env vars (CI secrets, gcloud config).
+VERTEX_PROJECT="${ANTHROPIC_VERTEX_PROJECT_ID:-${GOOGLE_CLOUD_PROJECT:-$(gcloud config get-value project 2>/dev/null || true)}}"
+VERTEX_REGION="${CLOUD_ML_REGION:-${GOOGLE_CLOUD_LOCATION:-us-east5}}"
 
 run_one_host() {
     local provider="$1"
@@ -199,7 +199,20 @@ run_one_host() {
     if [ -n "${mp}" ]; then
         export LIGHTSPEED_MODEL_PROVIDER="${mp}"
     fi
+    # Translate SDK-specific model vars (from config.env) into LIGHTSPEED_MODEL.
+    local model_pair
+    model_pair=$(model_env_var "${provider}")
+    export "${model_pair}"
+    export LIGHTSPEED_PROVIDER_URL="${OPENAI_BASE_URL:-}"
+    export LIGHTSPEED_PROVIDER_PROJECT="${VERTEX_PROJECT:-}"
+    export LIGHTSPEED_PROVIDER_REGION="${VERTEX_REGION:-}"
     export LIGHTSPEED_SKILLS_DIR="${E2E_SKILLS_WORKDIR}"
+
+    # Host mode: ensure credential file exists at the operator-expected path.
+    if [ -f "${GCLOUD_ADC}" ]; then
+        mkdir -p "${LLM_CREDS_PATH}"
+        cp "${GCLOUD_ADC}" "${LLM_CREDS_PATH}/GOOGLE_APPLICATION_CREDENTIALS"
+    fi
 
     echo "e2e: starting uvicorn (host) for ${provider} (image provider=${agent_provider}) on :${host_port}..."
     "${UV}" run python -m uvicorn lightspeed_agentic.app:app --host 0.0.0.0 --port "${host_port}" &
@@ -271,23 +284,16 @@ run_one() {
         ${GCLOUD_MOUNT} \
         -e LIGHTSPEED_PROVIDER="${agent_provider}" \
         -e LIGHTSPEED_MODEL_PROVIDER="$(provider_to_model_provider "${provider}")" \
+        -e "$(model_env_var "${provider}")" \
+        -e LIGHTSPEED_PROVIDER_URL="${OPENAI_BASE_URL:-}" \
+        -e LIGHTSPEED_PROVIDER_PROJECT="${VERTEX_PROJECT:-}" \
+        -e LIGHTSPEED_PROVIDER_REGION="${VERTEX_REGION:-}" \
         -e LIGHTSPEED_SKILLS_DIR="/app/skills" \
         -e E2E_OUTPUT_DIR="/app/e2e-output" \
         -e ANTHROPIC_API_KEY \
-        -e CLAUDE_CODE_USE_VERTEX \
-        -e ANTHROPIC_VERTEX_PROJECT_ID \
-        -e CLOUD_ML_REGION \
-        -e GOOGLE_API_KEY \
-        -e GEMINI_API_KEY \
-        -e GOOGLE_GENAI_USE_VERTEXAI \
-        -e GOOGLE_CLOUD_PROJECT \
-        -e GOOGLE_CLOUD_LOCATION \
         -e OPENAI_API_KEY \
-        -e OPENAI_BASE_URL \
         -e AWS_ACCESS_KEY_ID \
         -e AWS_SECRET_ACCESS_KEY \
-        -e AWS_REGION \
-        -e "$(model_env_var "${provider}")" \
         "${IMAGE}"
 
     echo "e2e: waiting for /health on port ${PORT}..."

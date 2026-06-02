@@ -73,7 +73,7 @@ for i in "${!PROVIDERS[@]}"; do
         -e EVAL_OUTPUT_DIR="/app/eval-output" \
         -e PYTHONPATH="/app/src:/opt/app-root/lib64/python3.12/site-packages" \
         $GCLOUD_MOUNT \
-        -e LIGHTSPEED_AGENT_PROVIDER="$agent_provider" \
+        -e LIGHTSPEED_PROVIDER="$agent_provider" \
         -e LIGHTSPEED_SKILLS_DIR="/app/workspace" \
         -e ANTHROPIC_API_KEY \
         -e CLAUDE_CODE_USE_VERTEX \

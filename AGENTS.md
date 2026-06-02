@@ -101,7 +101,7 @@ make eval-report                       # write evals/report.json
 ```text
 src/lightspeed_agentic/
 ├── app.py                # FastAPI entry point, mounts router at /v1/agent
-├── factory.py            # create_provider(...) using LIGHTSPEED_AGENT_PROVIDER
+├── factory.py            # create_provider(name) — receives SDK name from config.resolve_sdk()
 ├── logging.py            # Event logging helpers for query flows
 ├── tools.py              # Shared tool/skill utilities and defaults
 ├── types.py              # Provider events, query options, AgentProvider ABC
@@ -214,7 +214,13 @@ The Konflux pipeline will prefetch the new versions on the next PR.
 
 | Variable | Purpose |
 | --- | --- |
-| `LIGHTSPEED_AGENT_PROVIDER` | Default provider selected by `create_provider()` (`claude`, `gemini`, `openai`) |
+| `LIGHTSPEED_PROVIDER` | Provider type from operator (`anthropic`, `vertex`, `openai`, `azure`, `bedrock`) |
+| `LIGHTSPEED_MODEL` | Model name from operator |
+| `LIGHTSPEED_MODEL_PROVIDER` | Model provider for Vertex (`anthropic`, `google`, `openai`) |
+| `LIGHTSPEED_PROVIDER_URL` | Optional API endpoint override |
+| `LIGHTSPEED_PROVIDER_PROJECT` | Cloud project ID (Vertex) |
+| `LIGHTSPEED_PROVIDER_REGION` | Cloud region (Vertex, Bedrock) |
+| `LIGHTSPEED_PROVIDER_API_VERSION` | API version (Azure) |
 | `LIGHTSPEED_SKILLS_DIR` | Skills root mounted by the FastAPI app, default `/app/skills` |
 | `ANTHROPIC_MODEL` | Default Claude model for query routes |
 | `GEMINI_MODEL` | Default Gemini model for query routes |

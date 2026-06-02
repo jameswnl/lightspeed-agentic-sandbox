@@ -33,13 +33,15 @@ Returns HTTP 200 when all checks pass, HTTP 503 when any check fails. Not under 
 
 ## Readiness Checks
 
-**R1 — Provider and credential env.** `LIGHTSPEED_AGENT_PROVIDER` MUST be set and non-empty (no default for readiness). Then check the expected credential env var is set and non-empty. Does NOT validate the key's value.
+**R1 — Credential env.** Check that the expected credential env var(s) for the resolved backend are set and non-empty. The expected vars are backend-specific (carried in `ResolvedSDK.expected_envs`), not SDK-level. Does NOT validate the key's value.
 
-| Provider | Required env var(s) |
-|----------|-------------------|
-| `claude`, `deepagents`, `deepagents-claude` | `ANTHROPIC_API_KEY` |
-| `gemini`, `deepagents-gemini` | `GOOGLE_API_KEY` or `GEMINI_API_KEY` |
-| `openai`, `deepagents-openai` | `OPENAI_API_KEY` |
+| Backend | Required env var(s) |
+|---------|-------------------|
+| `anthropic` (direct) | `ANTHROPIC_API_KEY` |
+| `vertex/*` (all model providers) | `GOOGLE_APPLICATION_CREDENTIALS` |
+| `openai` (direct) | `OPENAI_API_KEY` |
+| `azure` | `AZURE_OPENAI_API_KEY` |
+| `bedrock` | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` |
 
 **R2 — Provider endpoint reachable.** Unauthenticated HTTP GET to the provider base URL. 3-second timeout. Any HTTP response (including 4xx) = reachable. Timeout or connection error = not ready.
 

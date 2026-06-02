@@ -25,19 +25,19 @@ Cross-references: how options are consumed in code → `how/provider-architectur
 
     | `LIGHTSPEED_PROVIDER` | `LIGHTSPEED_MODEL_PROVIDER` | SDK | SDK env vars set |
     |---|---|---|---|
-    | `anthropic` | *(derived)* | Claude | `LIGHTSPEED_AGENT_PROVIDER=claude`, `ANTHROPIC_MODEL` |
-    | `vertex` | `Anthropic` | Claude | `LIGHTSPEED_AGENT_PROVIDER=claude`, `ANTHROPIC_MODEL`, `CLAUDE_CODE_USE_VERTEX=1`, `ANTHROPIC_VERTEX_PROJECT_ID`, `CLOUD_ML_REGION`, `GOOGLE_APPLICATION_CREDENTIALS` |
-    | `vertex` | `Google` | Gemini | `LIGHTSPEED_AGENT_PROVIDER=gemini`, `GEMINI_MODEL`, `GOOGLE_GENAI_USE_VERTEXAI=true` |
-    | `vertex` | `OpenAI` | OpenAI | `LIGHTSPEED_AGENT_PROVIDER=openai`, `OPENAI_MODEL`, `OPENAI_BASE_URL` |
-    | `openai` | *(derived)* | OpenAI | `LIGHTSPEED_AGENT_PROVIDER=openai`, `OPENAI_MODEL` |
-    | `azure` | *(derived)* | OpenAI | `LIGHTSPEED_AGENT_PROVIDER=openai`, `OPENAI_MODEL`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_VERSION` |
-    | `bedrock` | *(derived)* | Claude | `LIGHTSPEED_AGENT_PROVIDER=claude`, `ANTHROPIC_MODEL`, `CLAUDE_CODE_USE_BEDROCK=1`, `AWS_REGION` |
+    | `anthropic` | *(derived)* | `claude` | `ANTHROPIC_MODEL` |
+    | `vertex` | `anthropic` | `claude` | `ANTHROPIC_MODEL`, `CLAUDE_CODE_USE_VERTEX=1`, `ANTHROPIC_VERTEX_PROJECT_ID`, `CLOUD_ML_REGION`, `GOOGLE_APPLICATION_CREDENTIALS` |
+    | `vertex` | `google` | `gemini` | `GEMINI_MODEL`, `GOOGLE_GENAI_USE_VERTEXAI=true`, `GOOGLE_APPLICATION_CREDENTIALS` |
+    | `vertex` | `openai` | `openai` | `OPENAI_MODEL`, `OPENAI_BASE_URL`, `GOOGLE_APPLICATION_CREDENTIALS` |
+    | `openai` | *(derived)* | `openai` | `OPENAI_MODEL` |
+    | `azure` | *(derived)* | `openai` | `OPENAI_MODEL`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_VERSION` |
+    | `bedrock` | *(derived)* | `claude` | `ANTHROPIC_MODEL`, `CLAUDE_CODE_USE_BEDROCK=1`, `AWS_REGION` |
 
     `LIGHTSPEED_PROVIDER_URL` MUST be mapped to the SDK-appropriate URL env var when set (e.g. `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`). `LIGHTSPEED_PROVIDER_PROJECT` and `LIGHTSPEED_PROVIDER_REGION` MUST be mapped to the provider-specific project/region vars. Credential files at `/var/run/secrets/llm-credentials/` MUST be referenced via `GOOGLE_APPLICATION_CREDENTIALS` for Vertex providers that require file-based credentials.
 
-3. **Provider selection.** Internal env var `LIGHTSPEED_AGENT_PROVIDER` selects the backend SDK. Supported logical values: `claude`, `gemini`, `openai`. This var is set by the provider configuration mapping (rule 2), not by the operator. Unknown values are rejected at startup when constructing the provider.
+3. **Provider selection.** `resolve_sdk()` returns a `ResolvedSDK` whose `name` field selects the backend SDK (`claude`, `gemini`, or `openai`). This is determined by the configuration mapping (rule 2), not by the operator. Unknown values are rejected at startup.
 
-4. **Default provider.** When `LIGHTSPEED_PROVIDER` is unset and `LIGHTSPEED_AGENT_PROVIDER` is unset, the provider defaults to Claude.
+4. **Default provider.** When `LIGHTSPEED_PROVIDER` is unset, the provider defaults to Claude.
 
 5. **Model resolution.** `LIGHTSPEED_MODEL` is the canonical model input. The provider configuration mapping (rule 2) sets the SDK-specific model var (`ANTHROPIC_MODEL`, `GEMINI_MODEL`, or `OPENAI_MODEL`) from `LIGHTSPEED_MODEL`. SDK-specific model vars MAY also be read directly for backward compatibility when `LIGHTSPEED_MODEL` is unset; if all are unset, use the package default model constant.
 
@@ -81,7 +81,6 @@ Cross-references: how options are consumed in code → `how/provider-architectur
 | `LIGHTSPEED_PROVIDER_PROJECT` | Cloud project ID from operator (see rule 1). |
 | `LIGHTSPEED_PROVIDER_REGION` | Cloud region from operator (see rule 1). |
 | `LIGHTSPEED_PROVIDER_API_VERSION` | API version from operator (see rule 1). |
-| `LIGHTSPEED_AGENT_PROVIDER` | Internal: SDK backend (`claude`, `gemini`, `openai`). Set by configuration mapping (rule 2), not operator. |
 | `ANTHROPIC_MODEL`, `GEMINI_MODEL`, `OPENAI_MODEL` | Internal: SDK-specific model vars. Set by configuration mapping (rule 2), not operator. |
 | `LIGHTSPEED_SKILLS_DIR` | Skill root and provider working directory default. |
 | `ANTHROPIC_API_KEY` | Claude SDK credential (from credentials secret envFrom). |

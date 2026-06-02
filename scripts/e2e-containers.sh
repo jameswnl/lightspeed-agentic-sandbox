@@ -182,7 +182,7 @@ run_one_host() {
     chmod -R a+rwX "${outdir}"
 
     prepare_e2e_skills_workspace
-    export LIGHTSPEED_AGENT_PROVIDER="${agent_provider}"
+    export LIGHTSPEED_PROVIDER="${agent_provider}"
     export LIGHTSPEED_SKILLS_DIR="${E2E_SKILLS_WORKDIR}"
 
     echo "e2e: starting uvicorn (host) for ${provider} (image provider=${agent_provider}) on :${host_port}..."
@@ -253,7 +253,7 @@ run_one() {
         -v "${outdir}:/app/e2e-output:Z" \
         -e PYTHONPATH="/app/src:/opt/app-root/lib64/python3.12/site-packages" \
         ${GCLOUD_MOUNT} \
-        -e LIGHTSPEED_AGENT_PROVIDER="${agent_provider}" \
+        -e LIGHTSPEED_PROVIDER="${agent_provider}" \
         -e LIGHTSPEED_SKILLS_DIR="/app/skills" \
         -e E2E_OUTPUT_DIR="/app/e2e-output" \
         -e ANTHROPIC_API_KEY \

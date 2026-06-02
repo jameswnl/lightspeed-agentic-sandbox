@@ -25,7 +25,7 @@ AI agents (Claude). Specs optimize for precision, unambiguous rules, and machine
 ## Conventions
 
 - `[PLANNED: OLS-XXXX]` markers indicate existing rules about to change
-- Environment variable names reference the actual env var (e.g., `LIGHTSPEED_AGENT_PROVIDER`)
+- Environment variable names reference the actual env var (e.g., `LIGHTSPEED_PROVIDER`)
 - Internal constants are stated as behavioral rules without numeric values
 
 ## Project Context

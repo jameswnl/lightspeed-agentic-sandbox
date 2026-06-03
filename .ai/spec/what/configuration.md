@@ -13,11 +13,10 @@ Cross-references: how options are consumed in code → `how/provider-architectur
     | `LIGHTSPEED_PROVIDER` | Yes | Hosting backend: `anthropic`, `vertex`, `openai`, `azure`, `bedrock` |
     | `LIGHTSPEED_MODEL` | Yes | Model identifier (e.g. `claude-sonnet-4-20250514`) |
     | `LIGHTSPEED_MODEL_PROVIDER` | When provider=`vertex` | Model family on Vertex: `Anthropic`, `Google`, `OpenAI` |
-    | `LIGHTSPEED_MODE` | Yes | Workflow step name |
-    | `LIGHTSPEED_PROVIDER_URL` | No | Optional API endpoint override |
-    | `LIGHTSPEED_PROVIDER_PROJECT` | No | Cloud project ID (Vertex) |
-    | `LIGHTSPEED_PROVIDER_REGION` | No | Cloud region (Vertex, Bedrock) |
-    | `LIGHTSPEED_PROVIDER_API_VERSION` | No | API version (Azure) |
+    | `LIGHTSPEED_PROVIDER_URL` | When URL set on provider config | Optional API endpoint override |
+    | `LIGHTSPEED_PROVIDER_PROJECT` | When provider=`vertex` | Cloud project ID |
+    | `LIGHTSPEED_PROVIDER_REGION` | When provider=`vertex` or `bedrock` | Cloud region |
+    | `LIGHTSPEED_PROVIDER_API_VERSION` | When provider=`azure` | API version |
 
     Credentials are mounted via `envFrom` (all secret keys as env vars) AND as files at `/var/run/secrets/llm-credentials/`.
 
@@ -76,7 +75,6 @@ Cross-references: how options are consumed in code → `how/provider-architectur
 | `LIGHTSPEED_PROVIDER` | Hosting backend from operator (see rule 1). Replaces direct SDK selection. |
 | `LIGHTSPEED_MODEL` | Model identifier from operator (see rule 1). |
 | `LIGHTSPEED_MODEL_PROVIDER` | Model family on Vertex from operator (see rule 1). |
-| `LIGHTSPEED_MODE` | Workflow step from operator (see rule 1). |
 | `LIGHTSPEED_PROVIDER_URL` | Optional API endpoint override from operator (see rule 1). |
 | `LIGHTSPEED_PROVIDER_PROJECT` | Cloud project ID from operator (see rule 1). |
 | `LIGHTSPEED_PROVIDER_REGION` | Cloud region from operator (see rule 1). |

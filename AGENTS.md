@@ -235,3 +235,21 @@ The Konflux pipeline will prefetch the new versions on the next PR.
 Provider credentials such as `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`,
 `GEMINI_API_KEY`, and `OPENAI_API_KEY` are expected by the underlying SDKs or
 passed through by the eval container launcher.
+
+## Risk Levels
+
+Risk levels are enforced via a PreToolUse hook before every Jira create/edit call.
+
+| Level | Customer Impact | Review Requirements |
+|-------|----------------|---------------------|
+| Risk 1 | Very little impact if wrong | No human code review required |
+| Risk 2 | Medium impact if problems | 1 human reviewer required |
+| Risk 3 | Major impact — risk of losing customers | 2+ human reviewers required |
+
+| Change Type | Risk Level |
+|-------------|------------|
+| Dependency version bump, doc/comment/test-only changes | 1 |
+| Internal refactor with no API or behavior change | 2 |
+| API contract, auth/RBAC, user-facing UI, cluster-mutating changes | 3 |
+
+Full rubric with examples: [lightspeed-team-harness/hooks/risk-rubric.md](https://github.com/openshift/lightspeed-team-harness/blob/main/hooks/risk-rubric.md).

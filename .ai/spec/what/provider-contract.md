@@ -40,7 +40,7 @@ Cross-references: HTTP mapping of prompts and timeouts → `run-api.md`. Env and
 
 17. **Thin-adapter principle.** Providers MUST delegate tool execution, command invocation, and skill discovery to their SDKs. Adapters MUST NOT implement custom tool executors that duplicate SDK behavior except for minimal glue (e.g., auto-confirm, path layout).
 
-18. **Structured output.** When `output_schema` is set: Claude uses the SDK’s JSON-schema output format; Gemini sets native response MIME type and response schema on the content config; OpenAI wraps the schema for the agents SDK output type with strict JSON-schema mode disabled.
+18. **Structured output.** When `output_schema` is set: Claude uses the SDK’s JSON-schema output format; Gemini sets native response MIME type and response schema on the content config; OpenAI wraps the schema for the agents SDK output type with strict JSON-schema mode enabled for native OpenAI endpoints (api.openai.com) and disabled for custom endpoints (vLLM etc. via `OPENAI_BASE_URL`). When strict mode is enabled, the schema is transformed to add `additionalProperties: false` and list all properties as required at every object level, as OpenAI’s strict mode requires.
 
 19. **Skills.** Claude discovers skills via SDK skill settings and a writable symlink layout under the effective cwd when the skill root is read-only. Gemini loads a skill toolset from the skill directory listing. OpenAI uses lazy skill loading from a local directory source rooted at `cwd`.
 

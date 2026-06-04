@@ -20,7 +20,7 @@ Cross-references: behavioral rules → `what/run-api.md`, `what/provider-contrac
 | `src/lightspeed_agentic/routes/query.py` | `_format_context_prefix()`, `register_query_routes()` — async `run_endpoint`, `asyncio.wait_for`, JSON parse / fallback, registers `POST /run`. |
 | `src/lightspeed_agentic/providers/claude.py` | `ClaudeProvider` — `_ensure_skills_link()`, `query()` using `ClaudeAgentOptions`, `query` stream, maps `StreamEvent` / `AssistantMessage` / `ResultMessage` to `ProviderEvent`, `output_format` from schema. |
 | `src/lightspeed_agentic/providers/gemini.py` | `_load_skills_toolset()`, `GeminiProvider` — `ExecuteBashTool` with auto-confirm wrapper and `bash -c` wrapping, optional search tools, `SkillToolset`, `Agent` + `Runner` + `InMemorySessionService`, `response_schema` when output schema set, usage aggregation. |
-| `src/lightspeed_agentic/providers/openai.py` | `_RawJsonSchema`, `_ensure_openai_init()`, `OpenAIProvider` — `AsyncOpenAI`, `OpenAIResponsesModel`, `SandboxAgent`, `UnixLocalSandboxClient`, capabilities `Shell`/`Filesystem`/`Skills`, `Runner.run_streamed`, stream event mapping. |
+| `src/lightspeed_agentic/providers/openai.py` | `_make_strict`, `_is_native_openai`, `_RawJsonSchema`, `_ensure_openai_init()`, `OpenAIProvider` — `AsyncOpenAI`, `OpenAIResponsesModel`, `SandboxAgent`, `UnixLocalSandboxClient`, capabilities `Shell`/`Filesystem`/`Skills`, `Runner.run_streamed`, stream event mapping. |
 
 ## Data Flow
 

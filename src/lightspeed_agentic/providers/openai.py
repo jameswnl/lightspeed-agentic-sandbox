@@ -45,14 +45,54 @@ from lightspeed_agentic.types import (
 )
 
 
+def _make_strict(schema: dict[str, Any]) -> dict[str, Any]:
+    """Add additionalProperties:false and required:[all props] to all objects recursively."""
+    if not isinstance(schema, dict):
+        return schema
+    schema = dict(schema)
+    if schema.get("type") == "object" and "properties" in schema:
+        schema["additionalProperties"] = False
+        schema["required"] = list(schema["properties"].keys())
+        schema["properties"] = {k: _make_strict(v) for k, v in schema["properties"].items()}
+    if "items" in schema and isinstance(schema["items"], dict):
+        schema["items"] = _make_strict(schema["items"])
+    for keyword in ("anyOf", "oneOf", "allOf"):
+        if keyword in schema and isinstance(schema[keyword], list):
+            schema[keyword] = [_make_strict(s) for s in schema[keyword]]
+    if "not" in schema and isinstance(schema["not"], dict):
+        schema["not"] = _make_strict(schema["not"])
+    for defs_key in ("$defs", "definitions"):
+        if defs_key in schema and isinstance(schema[defs_key], dict):
+            schema[defs_key] = {k: _make_strict(v) for k, v in schema[defs_key].items()}
+    return schema
+
+
+_OPENAI_HOSTS = ("api.openai.com",)
+
+
+def _is_native_openai() -> bool:
+    """True when talking to api.openai.com (explicitly or by default)."""
+    base_url = os.environ.get("OPENAI_BASE_URL")
+    if not base_url:
+        return True
+    try:
+        from urllib.parse import urlparse
+
+        return urlparse(base_url).hostname in _OPENAI_HOSTS
+    except Exception:
+        return False
+
+
 class _RawJsonSchema(AgentOutputSchemaBase):
     """Wraps an operator-provided JSON schema dict for the openai-agents SDK.
 
-    Strict mode is disabled because vLLM does not support constrained decoding.
+    Strict mode is enabled for native OpenAI (guarantees schema conformance)
+    but disabled for custom endpoints like vLLM that don't support it.
     """
 
     def __init__(self, schema: dict[str, Any]) -> None:
-        self._schema = schema
+        self._strict = _is_native_openai()
+        self._schema = _make_strict(schema) if self._strict else schema
 
     def is_plain_text(self) -> bool:
         return False
@@ -64,7 +104,7 @@ class _RawJsonSchema(AgentOutputSchemaBase):
         return self._schema
 
     def is_strict_json_schema(self) -> bool:
-        return False
+        return self._strict
 
     def validate_json(self, json_str: str) -> Any:
         return json.loads(json_str)

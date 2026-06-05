@@ -30,13 +30,13 @@ Cross-references: provider behavior and events → `provider-contract.md`. Env d
 
 12. **Context prefix — envelope.** When `context` is non-empty, the formatter produces a block that starts with a fixed marker line, ends with a closing marker line, and is prepended to `query` with separating newlines.
 
-13. **Context — `targetNamespaces`.** When present (list), include a line listing target namespaces as a comma-separated join.
+13. **Context — `targetNamespaces`.** When present and non-empty (list), include a line listing target namespaces as a comma-separated join.
 
 14. **Context — `attempt`.** When present (any), include a line labeling the attempt with placeholder text for the maximum (literal substring `of max` in the line; the formatter does not inject the max value).
 
-15. **Context — `previousAttempts`.** When present (iterable of objects), include a header line then one bullet line per entry with attempt index and optional `failureReason`.
+15. **Context — `previousAttempts`.** When present and non-empty (iterable of objects), include a header line then one bullet line per entry with attempt index and optional `failureReason`.
 
-16. **Context — `approvedOption`.** When present (object), append a bounded block: title, diagnosis root cause, proposal description, risk, reversibility, and optional action list with type and description; surround with explicit “approved remediation” and “do not exceed listed actions” banners.
+16. **Context — `approvedOption`.** When present and non-empty (object), append a bounded block: title, diagnosis root cause, proposal description, risk, reversibility, and optional action list with type and description; surround with explicit “approved remediation” and “do not exceed listed actions” banners.
 
 17. **Stream consumption.** The handler iterates the provider async iterator until a `result` event; earlier events are logged but do not terminate the request. See `provider-contract.md` for event types.
 

@@ -151,7 +151,7 @@ helpers.
   `httpx.AsyncClient` plus `ASGITransport`.
 - `make eval` and `make eval-report` are integration-only checks. They build the
   container image, start one container per provider, and run evals against live
-  `/v1/agent/analyze` endpoints.
+  `/v1/agent/run` endpoints.
 - See [`evals/README.md`](evals/README.md) for eval setup, credential handling,
   provider coverage, and report details.
 - Evals are container-only. If you change eval workspace fixtures, skills, or

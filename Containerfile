@@ -55,7 +55,7 @@ FROM registry.redhat.io/ubi9/podman:9.8 AS podman
 # ---------------------------------------------------------------------------
 # Runtime stage: minimal image with only what the agent needs
 # ---------------------------------------------------------------------------
-FROM registry.redhat.io/rhel9/python-312:latest
+FROM registry.redhat.io/rhel9/python-312-minimal:latest
 
 USER 0
 WORKDIR /app
@@ -64,25 +64,25 @@ WORKDIR /app
 # Split into functional groups for readability.
 
 # Claude Code SDK requirements
-RUN dnf install -y --nodocs \
+RUN microdnf install -y --nodocs \
     bash git wget jq \
-    && dnf clean all
+    && microdnf clean all
 
 # SRE debugging toolkit
-# tcpdump is installed separately with --setopt=strict=0 because it is not
+# tcpdump is installed separately with || true because it is not
 # available in the UBI9 subset repos used by ci-operator builds (OpenShift CI).
 # Konflux hermetic builds pre-fetch it via the RPM lockfile so the production
 # image still includes tcpdump.
-RUN dnf install -y --nodocs \
+RUN microdnf install -y --nodocs \
     procps-ng iproute bind-utils net-tools openssl \
     lsof strace \
     less vim-minimal findutils file diffutils \
     skopeo unzip tar gzip \
-    && dnf install -y --nodocs --setopt=strict=0 tcpdump \
-    && dnf clean all
+    && (microdnf install -y --nodocs tcpdump || true) \
+    && microdnf clean all
 
 # Node.js runtime (for claude-code CLI)
-RUN dnf install -y --nodocs nodejs && dnf clean all
+RUN microdnf install -y --nodocs nodejs && microdnf clean all
 
 # Copy Python site-packages from builder
 COPY --from=builder /app/site-packages /opt/app-root/lib64/python3.12/site-packages
@@ -104,9 +104,7 @@ COPY --from=builder /app/src ./src
 COPY --from=builder /app/pyproject.toml /app/README.md ./
 COPY LICENSE /licenses/LICENSE
 
-# RHEL Python base already has UID 1001 (default:root).
-RUN usermod -d /home/agent -l agent default && \
-    mkdir -p /app/skills /tmp/agent-workspace /home/agent && \
+RUN mkdir -p /app/skills /tmp/agent-workspace /home/agent && \
     chown -R 1001:0 /app /home/agent /tmp/agent-workspace
 
 ENV SHELL="/bin/bash"

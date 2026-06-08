@@ -73,12 +73,14 @@ bump-deps: ## Upgrade all dependencies and regenerate requirements
 	$(MAKE) requirements
 
 rpm-lockfile: rpms.in.yaml ubi.repo ## Regenerate rpms.lock.yaml (requires podman + Fedora)
-	$(CONTAINER_RUNTIME) run --rm -v "$$(pwd):/workdir:z" -w /workdir \
+	$(CONTAINER_RUNTIME) run --rm \
+		-v "$$(pwd):/workdir:z" -w /workdir \
+		-v "$${HOME}/.docker/config.json:/root/.docker/config.json:ro" \
 		registry.fedoraproject.org/fedora:latest bash -c " \
 		dnf install -y -q python3 python3-pip python3-dnf skopeo rpm && \
 		python3 -m pip install -q --break-system-packages \
 			https://github.com/konflux-ci/rpm-lockfile-prototype/archive/refs/heads/main.zip && \
-		rpm-lockfile-prototype --image registry.redhat.io/rhel9/python-312:latest rpms.in.yaml"
+		rpm-lockfile-prototype --image registry.redhat.io/rhel9/python-312-minimal:latest rpms.in.yaml"
 
 clean: ## Remove build artifacts and caches
 	rm -rf dist/ build/ *.egg-info .venv .pytest_cache .mypy_cache .ruff_cache node_modules/

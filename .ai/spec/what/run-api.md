@@ -71,3 +71,25 @@ Cross-references: provider behavior and events → `provider-contract.md`. Env d
 
 - Operator payload may later include `llm` and `allowedTools` per target architecture docs; sandbox route does not read them today. [PLANNED: OLS-3033]
 - TLS, network policy, and ingress hardening for the sandbox service. [PLANNED: OLS-3038–OLS-3043]
+
+## Verification
+
+Harness scope (live vs unit, run modes, flake policy):
+[e2e-testing.md](e2e-testing.md).
+
+Two layers:
+
+1. **Unit tests** (`tests/test_routes.py`) — mocked provider, deterministic handler
+   behavior (timeouts, empty result, response shaping). Preferred for rules 21 and 23.
+2. **Container BDD** (`tests/e2e/features/`, `scripts/e2e-containers.sh`) — live
+   `/v1/agent/run` against one sandbox container per process with real credentials.
+
+Rules **10–11** (`/health`, `/ready`) are verified under `health-probes.md`, not here.
+
+| Artifact | Rules exercised | Notes |
+|----------|-----------------|-------|
+| [structured_output.feature](../../../tests/e2e/features/structured_output.feature) | 3, 6, 18–20 | Live structured output and text fallback; adversarial schema stays HTTP 200 with envelope (rule 22 not triggered) |
+| [skills.feature](../../../tests/e2e/features/skills.feature) | 3, 18–20 | `/run` success paths with skills mounted (see `provider-contract.md`) |
+| [test_routes.py](../../../tests/test_routes.py) | 3, 5, 6, 8, 18–21, 23 | Mocked provider: `systemPrompt`, `outputSchema`, `timeout_ms`, timeout failure, empty result, text fallback |
+| [sandbox_e2e.feature](../../../tests/e2e/features/sandbox_e2e.feature) (Context prefix) | 4, 7, 12–16 | Live **targetNamespaces**, **previousAttempts**, and **approvedOption** echo via structured output; exact prefix strings in [test_routes.py](../../../tests/test_routes.py) |
+| [sandbox_e2e.feature](../../../tests/e2e/features/sandbox_e2e.feature) (Run error handling) | 21 | Live **timeout** only (`timeout_ms=1` → HTTP 200, `success=false`, timed-out summary). Rules 22–23 and no-500 adversarial path: `test_routes.py`, `structured_output.feature` |

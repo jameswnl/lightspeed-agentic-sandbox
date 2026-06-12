@@ -73,3 +73,27 @@ readinessProbe:
 ## Out of Scope for Probes
 
 Credential validity, skills content, model availability, tool execution — all caught by `/run` and handled by the operator.
+
+## Verification
+
+Harness scope (live vs unit, run modes, flake policy):
+[e2e-testing.md](e2e-testing.md).
+
+Two layers:
+
+1. **Unit tests** (`tests/test_health.py`, `tests/test_ready.py`) — liveness payload,
+   R1/R2 check helpers, and `/ready` route with mocked endpoint probe. Preferred for
+   503 + `checks` shape and backend-specific credential rules.
+2. **Container BDD** (`tests/e2e/features/`, `scripts/e2e-containers.sh`) — HTTP
+   against a running sandbox image (same base URL as `/v1/agent/run` e2e, but probe
+   paths are at the app root).
+
+Cross-reference: probes are **not** under `/v1/agent` → `run-api.md` rules 2, 10–11.
+
+| Artifact | Spec coverage | Notes |
+|----------|---------------|-------|
+| [test_health.py](../../../tests/test_health.py) | Liveness (`GET /health` → 200, `{"status":"ok"}`) | No subsystem checks |
+| [test_ready.py](../../../tests/test_ready.py) | R1 (credential env per backend), R2 (endpoint probe semantics), healthy/unhealthy `/ready` responses | Mocks `probe_provider_endpoint` for route tests; does not hit live provider URLs |
+| [sandbox_e2e.feature](../../../tests/e2e/features/sandbox_e2e.feature) (Readiness/liveness) | Liveness; readiness when container env satisfies R1 and R2 | E2e covers **happy path** only (200 on `/ready`); negative 503 scenarios stay unit-tested unless spike adds a deliberate misconfigured container |
+
+R3 (MCP reachability) has no tests until MCP support lands.

@@ -1,6 +1,6 @@
 Feature: Structured output via POST /v1/agent/run
-  Verifies: .ai/spec/query-api.md (Response parsing, Graceful degradation)
-  Verifies: .ai/spec/provider-contract.md (Structured output)
+  Verifies: .ai/spec/what/run-api.md (rules 18–20, structured response shaping)
+  Verifies: .ai/spec/what/provider-contract.md (Structured output)
   Live contract tests for one sandbox container per process (see scripts/e2e-containers.sh).
 
   Scenario: Run with flat schema and required fields

@@ -63,9 +63,11 @@ Before changing code, read the relevant spec in `.ai/spec/`:
 
 | Working on | Read |
 |---|---|
-| Provider adapters | [provider-contract.md](.ai/spec/provider-contract.md) |
-| /run endpoint | [query-api.md](.ai/spec/query-api.md) |
-| Deployment, env vars, or defaults | [configuration.md](.ai/spec/configuration.md) |
+| Provider adapters | [provider-contract.md](.ai/spec/what/provider-contract.md) |
+| /run endpoint | [run-api.md](.ai/spec/what/run-api.md) |
+| Health probes | [health-probes.md](.ai/spec/what/health-probes.md) |
+| Deployment, env vars, or defaults | [configuration.md](.ai/spec/what/configuration.md) |
+| E2E harness or BDD scenarios | [e2e-testing.md](.ai/spec/what/e2e-testing.md) |
 
 Specs capture invariants, design decisions, and known quirks that the code
 cannot express about itself. The code and this file cover the "how" — specs
@@ -78,9 +80,11 @@ its rules. Use this table to navigate from component → spec → executable tes
 
 | Spec | Description | Feature files |
 |---|---|---|
-| [query-api.md](.ai/spec/query-api.md) | `/run` endpoint: parsing, timeouts, context prefix, streaming | [structured_output.feature](tests/e2e/features/structured_output.feature) |
-| [provider-contract.md](.ai/spec/provider-contract.md) | Provider adapter rules: events, structured output, thin-adapter principle | [structured_output.feature](tests/e2e/features/structured_output.feature) |
-| [configuration.md](.ai/spec/configuration.md) | Provider selection, model resolution, skills directory, env vars | [structured_output.feature](tests/e2e/features/structured_output.feature) (implicit) |
+| [run-api.md](.ai/spec/what/run-api.md) | POST /run: context prefix, timeouts, error envelopes, response shaping | [sandbox_e2e.feature](tests/e2e/features/sandbox_e2e.feature), [structured_output.feature](tests/e2e/features/structured_output.feature) |
+| [health-probes.md](.ai/spec/what/health-probes.md) | Liveness and readiness probes | [sandbox_e2e.feature](tests/e2e/features/sandbox_e2e.feature) |
+| [provider-contract.md](.ai/spec/what/provider-contract.md) | Provider adapter rules: events, structured output, thin-adapter principle | [structured_output.feature](tests/e2e/features/structured_output.feature), [skills.feature](tests/e2e/features/skills.feature) |
+| [configuration.md](.ai/spec/what/configuration.md) | Provider selection, model resolution, skills directory, env vars | [structured_output.feature](tests/e2e/features/structured_output.feature), [sandbox_e2e.feature](tests/e2e/features/sandbox_e2e.feature) (implicit) |
+| [e2e-testing.md](.ai/spec/what/e2e-testing.md) | Container BDD harness, live vs unit split, run modes | [sandbox_e2e.feature](tests/e2e/features/sandbox_e2e.feature), [structured_output.feature](tests/e2e/features/structured_output.feature), [skills.feature](tests/e2e/features/skills.feature) |
 
 ## Quick Commands
 

@@ -1,6 +1,9 @@
 """Tests for OpenAI provider strict schema transform."""
 
+from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 from lightspeed_agentic.providers.openai import _make_strict, _RawJsonSchema
 
@@ -165,3 +168,35 @@ def test_strict_disabled_for_custom_endpoint():
     wrapper = _RawJsonSchema(schema)
     assert wrapper.is_strict_json_schema() is False
     assert "additionalProperties" not in wrapper.json_schema()
+
+
+def test_build_manifest_without_e2e_output_dir(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("E2E_OUTPUT_DIR", raising=False)
+    from lightspeed_agentic.providers.openai import _build_manifest
+
+    manifest = _build_manifest("/app/skills")
+    assert manifest.root == "/app/skills"
+    assert manifest.extra_path_grants == ()
+
+
+def test_build_manifest_grants_e2e_output_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("E2E_OUTPUT_DIR", str(tmp_path))
+    from lightspeed_agentic.providers.openai import _build_manifest
+
+    manifest = _build_manifest("/app/skills")
+    assert len(manifest.extra_path_grants) == 1
+    grant = manifest.extra_path_grants[0]
+    assert grant.path == str(tmp_path.resolve())
+    assert grant.read_only is False
+
+
+def test_build_manifest_skips_e2e_output_dir_outside_temp(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("E2E_OUTPUT_DIR", "/etc")
+    from lightspeed_agentic.providers.openai import _build_manifest
+
+    manifest = _build_manifest("/app/skills")
+    assert manifest.extra_path_grants == ()

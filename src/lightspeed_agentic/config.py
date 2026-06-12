@@ -15,6 +15,13 @@ logger = logging.getLogger(__name__)
 
 LLM_CREDENTIALS_PATH = "/var/run/secrets/llm-credentials"
 
+
+def _llm_credentials_path() -> str:
+    """Operator mount path; override for local e2e host mode when /var/run is not writable."""
+    override = os.environ.get("LIGHTSPEED_LLM_CREDENTIALS_PATH", "").strip()
+    return override or LLM_CREDENTIALS_PATH
+
+
 _DEFAULT_VERTEX_REGION = "us-east5"
 _DEFAULT_BEDROCK_REGION = "us-east-1"
 
@@ -78,7 +85,7 @@ def _resolve_vertex(
             _setenv_if_value("CLOUD_ML_REGION", region)
             _setenv(
                 "GOOGLE_APPLICATION_CREDENTIALS",
-                f"{LLM_CREDENTIALS_PATH}/GOOGLE_APPLICATION_CREDENTIALS",
+                f"{_llm_credentials_path()}/GOOGLE_APPLICATION_CREDENTIALS",
             )
             _setenv_if_value("ANTHROPIC_BASE_URL", url)
             return ResolvedSDK(
@@ -93,7 +100,7 @@ def _resolve_vertex(
             _setenv_if_value("GOOGLE_CLOUD_LOCATION", region)
             _setenv(
                 "GOOGLE_APPLICATION_CREDENTIALS",
-                f"{LLM_CREDENTIALS_PATH}/GOOGLE_APPLICATION_CREDENTIALS",
+                f"{_llm_credentials_path()}/GOOGLE_APPLICATION_CREDENTIALS",
             )
             return ResolvedSDK(
                 "gemini",
@@ -105,7 +112,7 @@ def _resolve_vertex(
             _setenv_if_value("OPENAI_BASE_URL", url)
             _setenv(
                 "GOOGLE_APPLICATION_CREDENTIALS",
-                f"{LLM_CREDENTIALS_PATH}/GOOGLE_APPLICATION_CREDENTIALS",
+                f"{_llm_credentials_path()}/GOOGLE_APPLICATION_CREDENTIALS",
             )
             return ResolvedSDK(
                 "openai",

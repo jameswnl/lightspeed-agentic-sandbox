@@ -10,6 +10,11 @@ These specs define WHAT the sandbox runtime must do -- testable behavioral rules
 | [provider-contract.md](provider-contract.md) | AgentProvider ABC, event model, structured output, thin-adapter principle, skills delegation |
 | [configuration.md](configuration.md) | Environment variables, provider selection, model resolution, container layout, build system |
 | [health-probes.md](health-probes.md) | Liveness (`/health`) and readiness (`/ready`) endpoints, failure mode audit, probe configuration |
+| [e2e-testing.md](e2e-testing.md) | Container BDD harness: run modes, live vs unit split, OLS-3220 spike findings |
+
+Behavioral specs with a **Verification** section link rules to BDD feature files
+under `tests/e2e/features/` and to unit tests where live e2e is unsuitable.
+Harness scope and flake policy: [e2e-testing.md](e2e-testing.md).
 
 ## Relationship to how/ Specs
 

@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from runner import RunHttpResult, run_query
+from tests.e2e.runner import RunHttpResult, run_query
 from steps.given import *  # noqa: F403 — step fixtures must be in conftest namespace
 from steps.when import *  # noqa: F403
 from steps.then import *  # noqa: F403
@@ -52,6 +52,7 @@ def run_runner(server_url: str) -> Callable[..., RunHttpResult]:
         *,
         system_prompt: str = "You are a helpful assistant. Follow instructions exactly.",
         output_schema: dict[str, Any] | None = None,
+        context: dict[str, Any] | None = None,
         timeout_ms: int | None = None,
     ) -> RunHttpResult:
         return run_query(
@@ -59,6 +60,7 @@ def run_runner(server_url: str) -> Callable[..., RunHttpResult]:
             query,
             system_prompt=system_prompt,
             output_schema=output_schema,
+            context=context,
             timeout_ms=timeout_ms,
         )
 

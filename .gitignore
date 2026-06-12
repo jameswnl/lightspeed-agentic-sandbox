@@ -16,5 +16,6 @@ evals/report.json
 /evals/workspace/.agents/
 /.eval-workspaces/
 .ols/
+.idea/
 *.log
 .e2e/

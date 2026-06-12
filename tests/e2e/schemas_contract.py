@@ -40,10 +40,41 @@ ECHO_TOKEN_SCHEMA: dict[str, Any] = {
     "properties": {
         "success": {"type": "boolean"},
         "summary": {"type": "string"},
-        "token": {"type": "string", "minLength": 1},
+        "token": {"type": "string", "minLength": 16, "pattern": "^[0-9a-f]+$"},
         "status": {"type": "string", "enum": ["ok"]},
     },
     "required": ["success", "summary", "token", "status"],
+}
+
+CONTEXT_NAMESPACES_ECHO_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "success": {"type": "boolean"},
+        "summary": {"type": "string"},
+        "namespaces": {"type": "string", "minLength": 1},
+    },
+    "required": ["success", "summary", "namespaces"],
+}
+
+CONTEXT_PREVIOUS_ATTEMPTS_ECHO_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "success": {"type": "boolean"},
+        "summary": {"type": "string"},
+        "firstFailureReason": {"type": "string", "minLength": 1},
+    },
+    "required": ["success", "summary", "firstFailureReason"],
+}
+
+CONTEXT_APPROVED_OPTION_ECHO_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "success": {"type": "boolean"},
+        "summary": {"type": "string"},
+        "approvedTitle": {"type": "string", "minLength": 1},
+        "rootCause": {"type": "string", "minLength": 1},
+    },
+    "required": ["success", "summary", "approvedTitle", "rootCause"],
 }
 
 # Strict schema used with a prompt that encourages invalid / non-JSON output.

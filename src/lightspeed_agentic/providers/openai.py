@@ -7,7 +7,9 @@ The SDK handles tool registration, skill discovery, and command execution.
 from __future__ import annotations
 
 import json
+import logging
 import os
+import tempfile
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -110,6 +112,8 @@ class _RawJsonSchema(AgentOutputSchemaBase):
         return json.loads(json_str)
 
 
+logger = logging.getLogger(__name__)
+
 _openai_initialized = False
 
 
@@ -123,6 +127,44 @@ def _ensure_openai_init() -> None:
     set_tracing_disabled(True)
     enable_verbose_stdout_logging()  # type: ignore[no-untyped-call]
     _openai_initialized = True
+
+
+def _validated_e2e_output_dir() -> str | None:
+    """Return E2E_OUTPUT_DIR when it resolves under the system temp directory."""
+    raw = os.environ.get("E2E_OUTPUT_DIR", "").strip()
+    if not raw:
+        return None
+    try:
+        resolved = Path(raw).resolve()
+    except OSError:
+        logger.warning("E2E_OUTPUT_DIR is not a valid path: %s", raw)
+        return None
+    temp_root = Path(tempfile.gettempdir()).resolve()
+    if resolved != temp_root and not str(resolved).startswith(str(temp_root) + os.sep):
+        logger.warning(
+            "E2E_OUTPUT_DIR outside temp root %s: %s",
+            temp_root,
+            resolved,
+        )
+        return None
+    return str(resolved)
+
+
+def _build_manifest(cwd: str) -> Any:
+    """Build sandbox manifest, optionally granting write access to E2E_OUTPUT_DIR."""
+    from agents.sandbox.manifest import Manifest, SandboxPathGrant  # type: ignore[attr-defined]
+
+    kwargs: dict[str, Any] = {"root": cwd}
+    output_dir = _validated_e2e_output_dir()
+    if output_dir:
+        kwargs["extra_path_grants"] = (
+            SandboxPathGrant(
+                path=output_dir,
+                read_only=False,
+                description="e2e skill token output",
+            ),
+        )
+    return Manifest(**kwargs)
 
 
 class OpenAIProvider(AgentProvider):
@@ -145,7 +187,6 @@ class OpenAIProvider(AgentProvider):
         from agents.sandbox.capabilities import Filesystem, Shell, Skills
         from agents.sandbox.capabilities.skills import LocalDirLazySkillSource
         from agents.sandbox.entries import LocalDir
-        from agents.sandbox.manifest import Manifest
         from agents.sandbox.sandboxes.unix_local import (
             UnixLocalSandboxClient,
         )
@@ -169,7 +210,7 @@ class OpenAIProvider(AgentProvider):
             ),
         ]
 
-        manifest = Manifest(root=options.cwd)
+        manifest = _build_manifest(options.cwd)
 
         agent_kwargs: dict[str, Any] = {
             "name": "lightspeed",

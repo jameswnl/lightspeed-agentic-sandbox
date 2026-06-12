@@ -547,6 +547,12 @@ spec:
     - name: netrc
       optional: true
   taskRunSpecs:
+  - pipelineTaskName: prefetch-dependencies
+    computeResources:
+      limits:
+        memory: 6Gi
+      requests:
+        memory: 4Gi
   - pipelineTaskName: build-source-image
     stepSpecs:
     - name: build

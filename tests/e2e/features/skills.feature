@@ -14,10 +14,10 @@ Feature: Skills
   Scenario: System runs a skill and returns structured output
     Given the sandbox service is running with skills
     And the echo-token skill query has been prepared
-    When I POST run with the prepared schema and query
+    When I POST run with the prepared echo-token query
     Then the HTTP response status code is 200
-    And the response JSON validates against the output schema
     And the skill script wrote a token file to disk
+    And the response JSON validates against the output schema
     And the response contains the generated token
 
   Scenario: Non-skill query is unaffected by mounted skills

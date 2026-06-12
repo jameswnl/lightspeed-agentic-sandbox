@@ -28,6 +28,7 @@ def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "LIGHTSPEED_PROVIDER_PROJECT",
         "LIGHTSPEED_PROVIDER_REGION",
         "LIGHTSPEED_PROVIDER_API_VERSION",
+        "LIGHTSPEED_LLM_CREDENTIALS_PATH",
         "ANTHROPIC_MODEL",
         "GEMINI_MODEL",
         "OPENAI_MODEL",
@@ -109,6 +110,20 @@ def test_vertex_google(monkeypatch: pytest.MonkeyPatch) -> None:
     assert os.environ["GOOGLE_CLOUD_LOCATION"] == "us-central1"
     assert os.environ["GOOGLE_APPLICATION_CREDENTIALS"] == (
         "/var/run/secrets/llm-credentials/GOOGLE_APPLICATION_CREDENTIALS"
+    )
+
+
+def test_vertex_llm_credentials_path_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clean_env(monkeypatch)
+    creds_dir = "/var/run/secrets/e2e-llm-credentials"
+    monkeypatch.setenv("LIGHTSPEED_PROVIDER", "vertex")
+    monkeypatch.setenv("LIGHTSPEED_MODEL_PROVIDER", "google")
+    monkeypatch.setenv("LIGHTSPEED_LLM_CREDENTIALS_PATH", creds_dir)
+
+    resolve_sdk()
+
+    assert os.environ["GOOGLE_APPLICATION_CREDENTIALS"] == (
+        f"{creds_dir}/GOOGLE_APPLICATION_CREDENTIALS"
     )
 
 

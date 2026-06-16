@@ -120,6 +120,12 @@ EXPOSE 8080
 ENTRYPOINT ["/usr/bin/catatonit", "--"]
 CMD ["python3.12", "-m", "uvicorn", "lightspeed_agentic.app:app", "--host", "0.0.0.0", "--port", "8080"]
 
-LABEL name="lightspeed-agentic-sandbox" \
+LABEL name="openshift-lightspeed/lightspeed-agentic-sandbox-rhel9" \
       summary="Multi-provider agent sandbox for OpenShift Lightspeed" \
-      description="Python agent with Claude, Gemini, and OpenAI provider support"
+      description="Python agent with Claude, Gemini, and OpenAI provider support" \
+      cpe="cpe:/a:redhat:openshift_lightspeed:1::el9" \
+      com.redhat.component="openshift-lightspeed" \
+      io.k8s.display-name="OpenShift Lightspeed Agentic Sandbox" \
+      io.k8s.description="Python agent with Claude, Gemini, and OpenAI provider support" \
+      io.openshift.tags="openshift-lightspeed,ols" \
+      konflux.additional-tags="latest"

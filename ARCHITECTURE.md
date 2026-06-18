@@ -113,7 +113,7 @@ graph TD
     subgraph "Container Image"
         direction TB
         Base["UBI 9 base"]
-        Sys["System packages<br/>(bash, git, oc, kubectl, ripgrep, tini)"]
+        Sys["System packages<br/>(bash, git, oc, kubectl, ripgrep, catatonit)"]
         Py["Python 3.12 + site-packages<br/>(FastAPI, provider SDKs)"]
         Node["Node.js + claude-code CLI"]
         AppSrc["Application source<br/>/app/src/"]
@@ -124,14 +124,14 @@ graph TD
     AppSrc -.-> SkillMount
 
     subgraph "Runtime"
-        Tini["tini (PID 1)"]
+        Catatonit["catatonit (PID 1)"]
         Uvicorn["uvicorn :8080"]
     end
 
-    Tini --> Uvicorn
+    Catatonit --> Uvicorn
 ```
 
-The container runs as a non-root `agent` user. `tini` is the init process (PID 1). Uvicorn serves the FastAPI app on port 8080.
+The container runs as a non-root `agent` user. `catatonit` is the init process (PID 1). Uvicorn serves the FastAPI app on port 8080.
 
 ## Key Decisions
 

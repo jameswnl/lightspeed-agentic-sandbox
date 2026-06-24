@@ -144,6 +144,33 @@ async def test_run_text_response():
         assert data["summary"] == "Just plain text, not JSON"
 
 
+@pytest.mark.asyncio
+async def test_run_accepts_traceparent_header():
+    """Verify traceparent header is accepted and request succeeds."""
+    app = _make_app(MockProvider())
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.post(
+            "/v1/agent/run",
+            json={"query": "Diagnose the issue"},
+            headers={"traceparent": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["success"] is True
+
+
+@pytest.mark.asyncio
+async def test_run_works_without_traceparent():
+    """Without traceparent, a fresh trace ID is generated — request still succeeds."""
+    app = _make_app(MockProvider())
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.post(
+            "/v1/agent/run",
+            json={"query": "Diagnose the issue"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["success"] is True
+
+
 def test_format_context_envelope_markers_only() -> None:
     """Rule 12: block starts and ends with fixed marker lines."""
     text = _format_context_prefix({})

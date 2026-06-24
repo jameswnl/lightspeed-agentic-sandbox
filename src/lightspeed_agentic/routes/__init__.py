@@ -52,6 +52,7 @@ def build_router(
     model: str | None = None,
     max_turns: int = 200,
     default_timeout_ms: int = 300_000,
+    audit_enabled: bool = False,
 ) -> APIRouter:
     resolved_model = _resolve_router_model(provider.name, model)
 
@@ -63,5 +64,6 @@ def build_router(
         model=resolved_model,
         max_turns=max_turns,
         default_timeout_ms=default_timeout_ms,
+        audit_enabled=audit_enabled,
     )
     return router

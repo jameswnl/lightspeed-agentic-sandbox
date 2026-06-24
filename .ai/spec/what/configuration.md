@@ -20,6 +20,13 @@ Cross-references: how options are consumed in code → `how/provider-architectur
 
     Credentials are mounted via `envFrom` (all secret keys as env vars) AND as files at `/var/run/secrets/llm-credentials/`.
 
+    The operator also sets audit and observability env vars based on `AgenticOLSConfig`:
+
+    | Env var | Required | Description |
+    |---|---|---|
+    | `LIGHTSPEED_AUDIT_ENABLED` | No | When `"true"`, structured audit event logging is enabled. Default: disabled. |
+    | `OTEL_EXPORTER_OTLP_ENDPOINT` | No | OTLP gRPC endpoint for span export (e.g. `jaeger-otlp-grpc.observability.svc:4317`). When absent, tracing is no-op. |
+
 2. **Provider configuration mapping.** On startup, the sandbox MUST read the generic env vars from rule 1 and set the SDK-specific env vars required by each provider SDK. This mapping runs before the FastAPI app starts. The mapping logic:
 
     | `LIGHTSPEED_PROVIDER` | `LIGHTSPEED_MODEL_PROVIDER` | SDK | SDK env vars set |
@@ -89,6 +96,8 @@ Cross-references: how options are consumed in code → `how/provider-architectur
 | `CLAUDE_CODE_USE_VERTEX` | Internal: Vertex-hosted Claude. Set by configuration mapping. |
 | `CLAUDE_CODE_USE_BEDROCK` | Internal: Bedrock-hosted Claude. Set by configuration mapping. |
 | `OPENAI_BASE_URL` | Internal: OpenAI-compatible endpoint. Set by configuration mapping. |
+| `LIGHTSPEED_AUDIT_ENABLED` | Audit event logging toggle. Set by operator from `AgenticOLSConfig`. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP gRPC endpoint for span export. Set by operator from `AgenticOLSConfig`. |
 | `/var/run/secrets/llm-credentials/` | LLM credential files mounted by operator (unconditional). |
 | `build_router(..., skills_dir=..., model=..., max_turns=..., default_timeout_ms=...)` | Library-level defaults when embedding the router. |
 

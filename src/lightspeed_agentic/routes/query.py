@@ -11,11 +11,12 @@ import json
 import logging
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from lightspeed_agentic.logging import EventLogger
 from lightspeed_agentic.routes.models import RunRequest, RunResponse
 from lightspeed_agentic.tools import DEFAULT_ALLOWED_TOOLS
+from lightspeed_agentic.tracing import get_tracer, parse_traceparent
 from lightspeed_agentic.types import AgentProvider, ProviderQueryOptions
 
 logger = logging.getLogger("lightspeed_agentic")
@@ -61,8 +62,9 @@ def register_query_routes(
     model: str,
     max_turns: int,
     default_timeout_ms: int,
+    audit_enabled: bool = False,  # noqa: ARG001 — used in PR2
 ) -> None:
-    async def run_endpoint(req: RunRequest) -> RunResponse:
+    async def run_endpoint(req: RunRequest, request: Request) -> RunResponse:
         timeout = req.timeout_ms if req.timeout_ms is not None else default_timeout_ms
         system_prompt = req.systemPrompt or "You are an AI agent."
 
@@ -71,34 +73,47 @@ def register_query_routes(
             prefix = _format_context_prefix(req.context)
             prompt = f"{prefix}\n\n{req.query}"
 
-        logger.info("[agent] Starting query (model=%s, provider=%s)", model, provider.name)
+        traceparent = request.headers.get("traceparent")
+        trace_id, trace_ctx = parse_traceparent(traceparent)
+        tracer = get_tracer()
+
+        logger.info(
+            "[agent] Starting query (model=%s, provider=%s, trace_id=%s)",
+            model,
+            provider.name,
+            trace_id,
+        )
 
         try:
-            result = provider.query(
-                ProviderQueryOptions(
-                    prompt=prompt,
-                    system_prompt=system_prompt,
-                    model=model,
-                    max_turns=max_turns,
-                    max_budget_usd=5.0,
-                    allowed_tools=DEFAULT_ALLOWED_TOOLS,
-                    cwd=skills_dir,
-                    output_schema=req.outputSchema,
-                )
-            )
-
             text = ""
             cost = 0.0
             event_logger = EventLogger("run")
 
             async def run() -> None:
                 nonlocal text, cost
-                async for event in result:
-                    event_logger.log(event)
-                    if event.type == "result":
-                        text = event.text
-                        cost = event.cost_usd
-                        break
+                with tracer.start_as_current_span(
+                    "agent.run",
+                    context=trace_ctx,
+                    attributes={"model": model, "provider": provider.name},
+                ):
+                    result = provider.query(
+                        ProviderQueryOptions(
+                            prompt=prompt,
+                            system_prompt=system_prompt,
+                            model=model,
+                            max_turns=max_turns,
+                            max_budget_usd=5.0,
+                            allowed_tools=DEFAULT_ALLOWED_TOOLS,
+                            cwd=skills_dir,
+                            output_schema=req.outputSchema,
+                        )
+                    )
+                    async for event in result:
+                        event_logger.log(event)
+                        if event.type == "result":
+                            text = event.text
+                            cost = event.cost_usd
+                            break
 
             await asyncio.wait_for(run(), timeout=timeout / 1000)
 

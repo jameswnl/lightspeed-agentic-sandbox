@@ -13,6 +13,7 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 
+from lightspeed_agentic.audit import AuditLogger, derive_phase
 from lightspeed_agentic.logging import EventLogger
 from lightspeed_agentic.routes.models import RunRequest, RunResponse
 from lightspeed_agentic.tools import DEFAULT_ALLOWED_TOOLS
@@ -62,7 +63,7 @@ def register_query_routes(
     model: str,
     max_turns: int,
     default_timeout_ms: int,
-    audit_enabled: bool = False,  # noqa: ARG001 — used in PR2
+    audit_enabled: bool = False,
 ) -> None:
     async def run_endpoint(req: RunRequest, request: Request) -> RunResponse:
         timeout = req.timeout_ms if req.timeout_ms is not None else default_timeout_ms
@@ -77,6 +78,15 @@ def register_query_routes(
         trace_id, trace_ctx = parse_traceparent(traceparent)
         tracer = get_tracer()
 
+        phase = derive_phase(req.context)
+        audit_logger = AuditLogger(
+            trace_id=trace_id,
+            phase=phase,
+            model=model,
+            provider=provider.name,
+            log_enabled=audit_enabled,
+        )
+
         logger.info(
             "[agent] Starting query (model=%s, provider=%s, trace_id=%s)",
             model,
@@ -87,10 +97,12 @@ def register_query_routes(
         try:
             text = ""
             cost = 0.0
+            input_tokens = 0
+            output_tokens = 0
             event_logger = EventLogger("run")
 
             async def run() -> None:
-                nonlocal text, cost
+                nonlocal text, cost, input_tokens, output_tokens
                 with tracer.start_as_current_span(
                     "agent.run",
                     context=trace_ctx,
@@ -110,38 +122,68 @@ def register_query_routes(
                     )
                     async for event in result:
                         event_logger.log(event)
+                        audit_logger.process_event(event)
                         if event.type == "result":
                             text = event.text
                             cost = event.cost_usd
+                            input_tokens = event.input_tokens
+                            output_tokens = event.output_tokens
                             break
 
             await asyncio.wait_for(run(), timeout=timeout / 1000)
 
         except TimeoutError:
+            audit_logger.complete(
+                success=False,
+                input_tokens=0,
+                output_tokens=0,
+                cost_usd=0,
+            )
             return RunResponse(success=False, summary=f"Agent timed out after {timeout}ms")
         except Exception as e:
+            audit_logger.complete(
+                success=False,
+                input_tokens=0,
+                output_tokens=0,
+                cost_usd=0,
+            )
             logger.exception("[agent] query error")
             return RunResponse(success=False, summary=f"Agent error: {e}")
 
         if not text:
+            audit_logger.complete(
+                success=False,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_usd=cost,
+            )
             return RunResponse(success=False, summary="Agent returned empty response")
 
         try:
             parsed = json.loads(text)
             if not isinstance(parsed, dict):
                 raise TypeError("expected dict")
-            logger.info(
-                "[agent] query complete: success=%s, cost=$%.4f",
-                parsed.get("success", True),
-                cost,
-            )
+            success = parsed.get("success", True)
+        except (json.JSONDecodeError, TypeError):
+            parsed = None
+            success = True
+
+        audit_logger.complete(
+            success=success,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost,
+        )
+
+        if parsed is not None:
+            logger.info("[agent] query complete: success=%s, cost=$%.4f", success, cost)
             return RunResponse(
-                success=parsed.get("success", True),
+                success=success,
                 summary=parsed.get("summary", text),
                 **{k: v for k, v in parsed.items() if k not in ("success", "summary")},
             )
-        except (json.JSONDecodeError, TypeError):
-            logger.info("[agent] query complete (text response), cost=$%.4f", cost)
-            return RunResponse(success=True, summary=text)
+
+        logger.info("[agent] query complete (text response), cost=$%.4f", cost)
+        return RunResponse(success=True, summary=text)
 
     router.add_api_route("/run", run_endpoint, methods=["POST"], response_model=RunResponse)

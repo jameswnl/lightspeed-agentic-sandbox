@@ -259,13 +259,11 @@ class OpenAIProvider(AgentProvider):
 
         yield ContentBlockStopEvent()
 
-        usage = getattr(result, "usage", None) or {}
-        input_tokens = getattr(usage, "input_tokens", 0)
-        output_tokens = getattr(usage, "output_tokens", 0)
+        usage = result.context_wrapper.usage
 
         yield ResultEvent(
             text=stringify(result.final_output),
             cost_usd=0,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
         )

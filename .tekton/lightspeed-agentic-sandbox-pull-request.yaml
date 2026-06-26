@@ -9,7 +9,13 @@ metadata:
     pipelinesascode.tekton.dev/cancel-in-progress: "true"
     pipelinesascode.tekton.dev/max-keep-runs: "3"
     pipelinesascode.tekton.dev/on-cel-expression: event == "pull_request" && target_branch
-      == "main"
+      == "main" && ("Containerfile".pathChanged() || "src/***".pathChanged()
+      || "pyproject.toml".pathChanged() || "README.md".pathChanged()
+      || "LICENSE".pathChanged() || "requirements*.txt".pathChanged()
+      || "package.json".pathChanged() || "package-lock.json".pathChanged()
+      || "rpms.in.yaml".pathChanged() || "rpms.lock.yaml".pathChanged()
+      || "ubi.repo".pathChanged() || "artifacts.lock.yaml".pathChanged()
+      || ".tekton/lightspeed-agentic-sandbox-pull-request.yaml".pathChanged())
   creationTimestamp: null
   labels:
     appstudio.openshift.io/application: ols

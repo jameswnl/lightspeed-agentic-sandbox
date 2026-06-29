@@ -42,11 +42,11 @@ rfc3986==2.0.0
 rich==15.0.0
 secretstorage==3.5.0
 setuptools==82.0.1
-setuptools-scm==10.1.2
+setuptools-scm==10.2.0
 tomlkit==0.15.0
 trove-classifiers==2026.6.1.19
 twine==6.2.0
 urllib3==2.7.0
 uv-dynamic-versioning==0.14.0
-vcs-versioning==2.1.1
+vcs-versioning==2.2.1
 wheel==0.47.0

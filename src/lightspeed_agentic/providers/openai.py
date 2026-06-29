@@ -200,36 +200,55 @@ class OpenAIProvider(AgentProvider):
             self._client = AsyncOpenAI(base_url=os.environ.get("OPENAI_BASE_URL"))
         model = OpenAIResponsesModel(model=options.model, openai_client=self._client)
 
-        capabilities = [
-            Shell(),
-            Filesystem(),
-            Skills(
-                lazy_from=LocalDirLazySkillSource(
-                    source=LocalDir(src=Path(options.cwd)),
-                )
-            ),
-        ]
+        skills_path = Path(options.cwd)
+        has_skills = skills_path.exists() and any(skills_path.iterdir())
 
-        manifest = _build_manifest(options.cwd)
+        if has_skills:
+            capabilities = [
+                Shell(),
+                Filesystem(),
+                Skills(
+                    lazy_from=LocalDirLazySkillSource(
+                        source=LocalDir(src=skills_path),
+                    )
+                ),
+            ]
 
-        agent_kwargs: dict[str, Any] = {
-            "name": "lightspeed",
-            "instructions": options.system_prompt,
-            "model": model,
-            "capabilities": capabilities,
-            "default_manifest": manifest,
-        }
+            manifest = _build_manifest(options.cwd)
 
-        if options.output_schema:
-            agent_kwargs["output_type"] = _RawJsonSchema(options.output_schema)
+            agent_kwargs: dict[str, Any] = {
+                "name": "lightspeed",
+                "instructions": options.system_prompt,
+                "model": model,
+                "capabilities": capabilities,
+                "default_manifest": manifest,
+            }
 
-        agent = SandboxAgent(**agent_kwargs)
+            if options.output_schema:
+                agent_kwargs["output_type"] = _RawJsonSchema(options.output_schema)
 
-        run_config = RunConfig(
-            sandbox=SandboxRunConfig(
-                client=UnixLocalSandboxClient(),
-            ),
-        )
+            agent = SandboxAgent(**agent_kwargs)
+
+            run_config = RunConfig(
+                sandbox=SandboxRunConfig(
+                    client=UnixLocalSandboxClient(),
+                ),
+            )
+        else:
+            from agents import Agent
+
+            agent_kwargs = {
+                "name": "lightspeed",
+                "instructions": options.system_prompt,
+                "model": model,
+            }
+            if options.output_schema:
+                agent_kwargs["output_type"] = _RawJsonSchema(options.output_schema)
+
+            agent = Agent(**agent_kwargs)
+            run_config = RunConfig()
+
+            logger.info("No skills found at %s — using plain Agent (no sandbox capabilities)", options.cwd)
 
         result = Runner.run_streamed(
             agent,

@@ -48,5 +48,5 @@ trove-classifiers==2026.6.1.19
 twine==6.2.0
 urllib3==2.7.0
 uv-dynamic-versioning==0.14.0
-vcs-versioning==2.2.1
+vcs-versioning==2.2.2
 wheel==0.47.0

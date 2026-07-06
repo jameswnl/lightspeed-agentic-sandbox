@@ -36,7 +36,7 @@ Cross-references: provider behavior and events → `provider-contract.md`. Env d
 
 15. **Context — `previousAttempts`.** When present and non-empty (iterable of objects), include a header line then one bullet line per entry with attempt index and optional `failureReason`.
 
-16. **Context — `approvedOption`.** When present and non-empty (object), append a bounded block: title, diagnosis root cause, run description, risk, reversibility, and optional action list with type and description; surround with explicit “approved remediation” and “do not exceed listed actions” banners.
+16. **Context — `approvedOption`.** When present and non-empty (object), append a bounded block: title, diagnosis root cause, proposal description, risk, reversibility, and optional action list with command, type, and description; surround with explicit “approved remediation” and “do not exceed listed actions” banners. Each action's `command` field contains the exact bash command (kubectl/oc) to execute.
 
 17. **Stream consumption.** The handler iterates the provider async iterator until a `result` event; earlier events are logged but do not terminate the request. See `provider-contract.md` for event types.
 

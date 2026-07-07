@@ -80,7 +80,7 @@ _rm_container_owned() {
         || true
 }
 
-APP_SOURCE_MARKER="/app/src/lightspeed_agentic/app.py"
+APP_SOURCE_MARKER="/opt/lightspeed/src/lightspeed_agentic/app.py"
 
 _ensure_container_runtime() {
     if "${RUNTIME}" info >/dev/null 2>&1; then
@@ -488,7 +488,7 @@ run_one() {
         -p "${PORT}:8080" \
         -v "${E2E_SKILLS_WORKDIR}:/app/skills:Z" \
         -v "${e2e_tmp_dir}:/tmp/lightspeed-e2e-output:Z" \
-        -e PYTHONPATH="/app/src:/opt/app-root/lib64/python3.12/site-packages" \
+        -e PYTHONPATH="/opt/lightspeed/src:/opt/app-root/lib64/python3.12/site-packages" \
         ${GCLOUD_MOUNT} \
         -e LIGHTSPEED_PROVIDER="${agent_provider}" \
         -e LIGHTSPEED_MODEL_PROVIDER="$(provider_to_model_provider "${provider}")" \

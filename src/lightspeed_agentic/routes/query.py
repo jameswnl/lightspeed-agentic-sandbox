@@ -12,6 +12,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 
 from lightspeed_agentic.audit import AuditLogger, derive_phase
 from lightspeed_agentic.logging import EventLogger
@@ -21,6 +22,20 @@ from lightspeed_agentic.tracing import get_tracer, parse_traceparent
 from lightspeed_agentic.types import AgentProvider, ProviderQueryOptions
 
 logger = logging.getLogger("lightspeed_agentic")
+
+
+def _is_infrastructure_error(exc: Exception) -> bool:
+    """Classify whether an exception is an infrastructure error.
+
+    Infrastructure errors (connection, timeout, rate limit) should
+    return HTTP 502 so the caller can retry. Application errors
+    return HTTP 200 with success=false.
+    """
+    infra_types = (ConnectionError, TimeoutError, OSError)
+    if isinstance(exc, infra_types):
+        return True
+    exc_name = type(exc).__name__.lower()
+    return any(k in exc_name for k in ("connection", "timeout", "ratelimit", "apiconnection"))
 
 
 def _format_context_prefix(context: dict[str, Any]) -> str:
@@ -49,6 +64,17 @@ def _format_context_prefix(context: dict[str, Any]) -> str:
             for action in actions:
                 lines.append(f"  - [{action['type']}] {action['description']}")
         lines.append("=== DO NOT perform any actions beyond what is listed above ===")
+        lines.append("")
+
+    if exec_result := context.get("executionResult"):
+        lines.append("")
+        lines.append("=== EXECUTION RESULT (from previous step) ===")
+        if isinstance(exec_result, dict):
+            for key, val in exec_result.items():
+                lines.append(f"  {key}: {val}")
+        else:
+            lines.append(f"  {exec_result}")
+        lines.append("=== END EXECUTION RESULT ===")
         lines.append("")
 
     lines.append("[/context]")
@@ -139,7 +165,10 @@ def register_query_routes(
                 output_tokens=0,
                 cost_usd=0,
             )
-            return RunResponse(success=False, summary=f"Agent timed out after {timeout}ms")
+            return JSONResponse(
+                status_code=502,
+                content={"error": f"Agent timed out after {timeout}ms"},
+            )
         except Exception as e:
             audit_logger.complete(
                 success=False,
@@ -148,6 +177,11 @@ def register_query_routes(
                 cost_usd=0,
             )
             logger.exception("[agent] query error")
+            if _is_infrastructure_error(e):
+                return JSONResponse(
+                    status_code=502,
+                    content={"error": f"Infrastructure error: {e}"},
+                )
             return RunResponse(success=False, summary=f"Agent error: {e}")
 
         if not text:

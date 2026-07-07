@@ -18,7 +18,6 @@ MAX_TOOL_OUTPUT_LOG = 1000
 MAX_RESULT_LOG = 500
 THINKING_BUF_FLUSH = 50_000
 
-DEFAULT_EVENT_LOG_PATH = "/var/log/agent-events.jsonl"
 MAX_EVENT_TOOL_INPUT = 2000
 MAX_EVENT_TOOL_OUTPUT = 2000
 MAX_EVENT_THINKING = 2000
@@ -27,10 +26,11 @@ MAX_EVENT_THINKING = 2000
 class EventLogger:
     """Buffers thinking deltas and logs them as complete blocks.
 
-    When the AGENT_EVENT_LOG env var is set (or defaults to
-    /var/log/agent-events.jsonl), also writes structured JSONL events to that
-    file for transcript persistence.  If the file cannot be opened, a warning
-    is logged and file output is silently skipped.
+    When the AGENT_EVENT_LOG env var is explicitly set to a file path, also
+    writes structured JSONL events to that file for transcript persistence.
+    File output is opt-in only; when the env var is unset, no file is written.
+    If the configured file cannot be opened, a warning is logged and file
+    output is silently skipped.
     """
 
     def __init__(self, phase: str) -> None:

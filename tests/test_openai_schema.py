@@ -170,6 +170,15 @@ def test_strict_disabled_for_custom_endpoint():
     assert "additionalProperties" not in wrapper.json_schema()
 
 
+def test_build_manifest_parent_of_cwd(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Manifest root should be cwd's parent so exec_command reaches the full workspace."""
+    monkeypatch.delenv("E2E_OUTPUT_DIR", raising=False)
+    from lightspeed_agentic.providers.openai import _build_manifest
+
+    manifest = _build_manifest(str(Path("/app/skills").parent))
+    assert manifest.root == "/app"
+
+
 def test_build_manifest_without_e2e_output_dir(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("E2E_OUTPUT_DIR", raising=False)
     from lightspeed_agentic.providers.openai import _build_manifest

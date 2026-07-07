@@ -210,7 +210,8 @@ class OpenAIProvider(AgentProvider):
             ),
         ]
 
-        manifest = _build_manifest(options.cwd)
+        # Manifest root is cwd's parent (/app) so exec_command can reach the full workspace.
+        manifest = _build_manifest(str(Path(options.cwd).parent))
 
         agent_kwargs: dict[str, Any] = {
             "name": "lightspeed",

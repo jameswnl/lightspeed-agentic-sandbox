@@ -99,9 +99,12 @@ RUN ln -s /usr/bin/oc /usr/bin/kubectl
 COPY --from=podman /usr/libexec/podman/catatonit /usr/bin/catatonit
 
 
-# Copy application source and metadata
-COPY --from=builder /app/src ./src
-COPY --from=builder /app/pyproject.toml /app/README.md ./
+# Copy application source outside /app so the agent workspace stays clean.
+# The agent's Filesystem/Shell capabilities can see /app/; keeping source
+# elsewhere prevents the LLM from reading sandbox internals during analysis.
+# Intentionally root-owned and world-readable: the agent user should not modify app code.
+COPY --from=builder /app/src /opt/lightspeed/src
+COPY --from=builder /app/pyproject.toml /app/README.md /opt/lightspeed/
 COPY LICENSE /licenses/LICENSE
 
 RUN mkdir -p /app/skills /tmp/agent-workspace /home/agent && \
@@ -110,7 +113,7 @@ RUN mkdir -p /app/skills /tmp/agent-workspace /home/agent && \
 ENV SHELL="/bin/bash"
 ENV HOME="/home/agent"
 ENV LIGHTSPEED_SKILLS_DIR="/app/skills"
-ENV PYTHONPATH="/app/src:/opt/app-root/lib64/python3.12/site-packages"
+ENV PYTHONPATH="/opt/lightspeed/src:/opt/app-root/lib64/python3.12/site-packages"
 ENV PATH="/usr/local/bin:${PATH}"
 
 USER 1001:1001

@@ -16,6 +16,7 @@ from lightspeed_agentic.config import resolve_sdk
 from lightspeed_agentic.factory import create_provider
 from lightspeed_agentic.health import register_health_routes, register_ready_route
 from lightspeed_agentic.routes import build_router, resolve_startup_model
+from lightspeed_agentic.session_messages import SessionMessageConsumer
 from lightspeed_agentic.tracing import init_tracer, shutdown_tracer
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -23,10 +24,13 @@ logger = logging.getLogger(__name__)
 
 audit_enabled = os.environ.get("LIGHTSPEED_AUDIT_ENABLED", "").strip().lower() == "true"
 
+session_messages = SessionMessageConsumer()
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     init_tracer()
+    logger.info("Session message consumer watching %s", session_messages.path)
     yield
     shutdown_tracer()
 

@@ -1,7 +1,9 @@
-"""Query endpoint — POST /run.
+"""Query endpoints — POST /run and GET /events.
 
-The operator sends {query, systemPrompt, outputSchema, context, timeout_ms}
+POST /run: the operator sends {query, systemPrompt, outputSchema, context, timeout_ms}
 and the agent runs the LLM and returns {success, summary, ...structured fields}.
+
+GET /events: returns the JSONL event log written during agent runs.
 """
 
 from __future__ import annotations
@@ -9,10 +11,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from typing import Any
 
-from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 from lightspeed_agentic.audit import AuditLogger, derive_phase
 from lightspeed_agentic.logging import EventLogger
@@ -221,3 +224,14 @@ def register_query_routes(
         return RunResponse(success=True, summary=text)
 
     router.add_api_route("/run", run_endpoint, methods=["POST"], response_model=RunResponse)
+
+    def events_endpoint() -> PlainTextResponse:
+        """Return the JSONL event log file contents."""
+        path = os.environ.get("AGENT_EVENT_LOG")
+        if path is None or not os.path.isfile(path):
+            raise HTTPException(status_code=404, detail="Event log not found")
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        return PlainTextResponse(content=content, media_type="application/x-ndjson")
+
+    router.add_api_route("/events", events_endpoint, methods=["GET"])

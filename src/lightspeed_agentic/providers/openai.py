@@ -203,86 +203,119 @@ class OpenAIProvider(AgentProvider):
         skills_path = Path(options.cwd)
         has_skills = skills_path.exists() and any(skills_path.iterdir())
 
-        if has_skills:
-            capabilities = [
-                Shell(),
-                Filesystem(),
-                Skills(
-                    lazy_from=LocalDirLazySkillSource(
-                        source=LocalDir(src=skills_path),
-                    )
-                ),
-            ]
+        mcp_server_instances: list[Any] = []
+        try:
+            if options.mcp_servers:
+                from agents.mcp import MCPServerSse, MCPServerSseParams
 
-            manifest = _build_manifest(options.cwd)
+                from lightspeed_agentic.mcp import resolve_headers
 
-            agent_kwargs: dict[str, Any] = {
-                "name": "lightspeed",
-                "instructions": options.system_prompt,
-                "model": model,
-                "capabilities": capabilities,
-                "default_manifest": manifest,
-            }
+                for server in options.mcp_servers:
+                    headers = resolve_headers(server.headers)
+                    url = server.url
+                    if url.endswith('/sse'):
+                        params = MCPServerSseParams(url=url, headers=headers)
+                        mcp = MCPServerSse(params=params, name=server.name)
+                    else:
+                        from agents.mcp import MCPServerStreamableHttp, MCPServerStreamableHttpParams
+                        params = MCPServerStreamableHttpParams(url=url, headers=headers)
+                        mcp = MCPServerStreamableHttp(params=params, name=server.name)
+                    await mcp.connect()
+                    mcp_server_instances.append(mcp)
 
-            if options.output_schema:
-                agent_kwargs["output_type"] = _RawJsonSchema(options.output_schema)
+            if has_skills:
+                capabilities = [
+                    Shell(),
+                    Filesystem(),
+                    Skills(
+                        lazy_from=LocalDirLazySkillSource(
+                            source=LocalDir(src=skills_path),
+                        )
+                    ),
+                ]
 
-            agent = SandboxAgent(**agent_kwargs)
+                manifest = _build_manifest(options.cwd)
 
-            run_config = RunConfig(
-                sandbox=SandboxRunConfig(
-                    client=UnixLocalSandboxClient(),
-                ),
+                agent_kwargs: dict[str, Any] = {
+                    "name": "lightspeed",
+                    "instructions": options.system_prompt,
+                    "model": model,
+                    "capabilities": capabilities,
+                    "default_manifest": manifest,
+                }
+
+                if options.output_schema:
+                    agent_kwargs["output_type"] = _RawJsonSchema(options.output_schema)
+                if mcp_server_instances:
+                    agent_kwargs["mcp_servers"] = mcp_server_instances
+
+                agent = SandboxAgent(**agent_kwargs)
+
+                run_config = RunConfig(
+                    sandbox=SandboxRunConfig(
+                        client=UnixLocalSandboxClient(),
+                    ),
+                )
+            else:
+                from agents import Agent
+
+                agent_kwargs = {
+                    "name": "lightspeed",
+                    "instructions": options.system_prompt,
+                    "model": model,
+                }
+                if options.output_schema:
+                    agent_kwargs["output_type"] = _RawJsonSchema(options.output_schema)
+                if mcp_server_instances:
+                    agent_kwargs["mcp_servers"] = mcp_server_instances
+
+                logger.info(
+                    "No skills found at %s — using plain Agent (no sandbox capabilities)",
+                    options.cwd,
+                )
+
+                agent = Agent(**agent_kwargs)
+                run_config = RunConfig()
+
+            result = Runner.run_streamed(
+                agent,
+                options.prompt,
+                max_turns=options.max_turns,
+                run_config=run_config,
             )
-        else:
-            from agents import Agent
 
-            agent_kwargs = {
-                "name": "lightspeed",
-                "instructions": options.system_prompt,
-                "model": model,
-            }
-            if options.output_schema:
-                agent_kwargs["output_type"] = _RawJsonSchema(options.output_schema)
+            async for event in result.stream_events():
+                if isinstance(event, RawResponsesStreamEvent):
+                    if isinstance(event.data, ResponseTextDeltaEvent) and event.data.delta:
+                        yield TextDeltaEvent(text=event.data.delta)
+                elif isinstance(event, RunItemStreamEvent):
+                    if isinstance(event.item, ToolCallItem):
+                        raw = event.item.raw_item
+                        name = (
+                            getattr(raw, "name", None)
+                            or (raw.get("name") if isinstance(raw, dict) else "")
+                            or ""
+                        )
+                        args = getattr(raw, "arguments", None) or ""
+                        yield ToolCallEvent(name=name, input=args[:TOOL_INPUT_MAX_CHARS])
+                    elif isinstance(event.item, ToolCallOutputItem):
+                        yield ToolResultEvent(
+                            output=stringify(event.item.output)[:TOOL_OUTPUT_MAX_CHARS]
+                        )
 
-            agent = Agent(**agent_kwargs)
-            run_config = RunConfig()
+            yield ContentBlockStopEvent()
 
-            logger.info("No skills found at %s — using plain Agent (no sandbox capabilities)", options.cwd)
+            usage = result.context_wrapper.usage
 
-        result = Runner.run_streamed(
-            agent,
-            options.prompt,
-            max_turns=options.max_turns,
-            run_config=run_config,
-        )
-
-        async for event in result.stream_events():
-            if isinstance(event, RawResponsesStreamEvent):
-                if isinstance(event.data, ResponseTextDeltaEvent) and event.data.delta:
-                    yield TextDeltaEvent(text=event.data.delta)
-            elif isinstance(event, RunItemStreamEvent):
-                if isinstance(event.item, ToolCallItem):
-                    raw = event.item.raw_item
-                    name = (
-                        getattr(raw, "name", None)
-                        or (raw.get("name") if isinstance(raw, dict) else "")
-                        or ""
-                    )
-                    args = getattr(raw, "arguments", None) or ""
-                    yield ToolCallEvent(name=name, input=args[:TOOL_INPUT_MAX_CHARS])
-                elif isinstance(event.item, ToolCallOutputItem):
-                    yield ToolResultEvent(
-                        output=stringify(event.item.output)[:TOOL_OUTPUT_MAX_CHARS]
-                    )
-
-        yield ContentBlockStopEvent()
-
-        usage = result.context_wrapper.usage
-
-        yield ResultEvent(
-            text=stringify(result.final_output),
-            cost_usd=0,
-            input_tokens=usage.input_tokens,
-            output_tokens=usage.output_tokens,
-        )
+            yield ResultEvent(
+                text=stringify(result.final_output),
+                cost_usd=0,
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+            )
+        finally:
+            for mcp in mcp_server_instances:
+                try:
+                    await mcp.cleanup()
+                except Exception:
+                    logger.warning("Failed to cleanup MCP server", exc_info=True)

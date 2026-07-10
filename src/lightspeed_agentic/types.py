@@ -69,6 +69,15 @@ ProviderEvent = (
 
 
 @dataclass
+class MCPServerConfig:
+    """MCP server configuration from LIGHTSPEED_MCP_SERVERS."""
+
+    name: str
+    url: str
+    headers: dict[str, str] | None = None
+
+
+@dataclass
 class ProviderQueryOptions:
     prompt: str
     system_prompt: str
@@ -79,6 +88,7 @@ class ProviderQueryOptions:
     cwd: str
     output_schema: dict[str, Any] | None = None
     stream: bool = False
+    mcp_servers: list[MCPServerConfig] | None = None
 
 
 class AgentProvider(ABC):

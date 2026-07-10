@@ -22,7 +22,7 @@ from lightspeed_agentic.logging import EventLogger
 from lightspeed_agentic.routes.models import RunRequest, RunResponse
 from lightspeed_agentic.tools import DEFAULT_ALLOWED_TOOLS
 from lightspeed_agentic.tracing import get_tracer, parse_traceparent
-from lightspeed_agentic.types import AgentProvider, ProviderQueryOptions
+from lightspeed_agentic.types import AgentProvider, MCPServerConfig, ProviderQueryOptions
 
 logger = logging.getLogger("lightspeed_agentic")
 
@@ -137,6 +137,22 @@ def register_query_routes(
                     context=trace_ctx,
                     attributes={"model": model, "provider": provider.name},
                 ):
+                    # Parse MCP server config from env
+                    mcp_configs = None
+                    mcp_env = os.environ.get("LIGHTSPEED_MCP_SERVERS", "")
+                    if mcp_env:
+                        try:
+                            mcp_configs = [
+                                MCPServerConfig(
+                                    name=s.get("name", ""),
+                                    url=s.get("url", ""),
+                                    headers=s.get("headers"),
+                                )
+                                for s in json.loads(mcp_env)
+                            ]
+                        except Exception:
+                            logger.warning("Failed to parse LIGHTSPEED_MCP_SERVERS")
+
                     result = provider.query(
                         ProviderQueryOptions(
                             prompt=prompt,
@@ -147,6 +163,7 @@ def register_query_routes(
                             allowed_tools=DEFAULT_ALLOWED_TOOLS,
                             cwd=skills_dir,
                             output_schema=req.outputSchema,
+                            mcp_servers=mcp_configs,
                         )
                     )
                     async for event in result:

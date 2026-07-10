@@ -26,7 +26,8 @@ def resolve_headers(headers: dict[str, str] | None) -> dict[str, str]:
         if value.startswith("file:"):
             path = value[5:]
             try:
-                resolved[key] = open(path).read().strip()
+                with open(path) as f:
+                    resolved[key] = f.read().strip()
             except OSError:
                 resolved[key] = value
         else:

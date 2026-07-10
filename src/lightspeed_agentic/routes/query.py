@@ -142,14 +142,13 @@ def register_query_routes(
                     mcp_env = os.environ.get("LIGHTSPEED_MCP_SERVERS", "")
                     if mcp_env:
                         try:
-                            import json as _json
                             mcp_configs = [
                                 MCPServerConfig(
                                     name=s.get("name", ""),
                                     url=s.get("url", ""),
                                     headers=s.get("headers"),
                                 )
-                                for s in _json.loads(mcp_env)
+                                for s in json.loads(mcp_env)
                             ]
                         except Exception:
                             logger.warning("Failed to parse LIGHTSPEED_MCP_SERVERS")

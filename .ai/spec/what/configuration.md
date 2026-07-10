@@ -20,6 +20,12 @@ Cross-references: how options are consumed in code → `how/provider-architectur
 
     Credentials are mounted via `envFrom` (all secret keys as env vars) AND as files at `/var/run/secrets/llm-credentials/`.
 
+    The operator also sets MCP tool integration env vars when the workflow step references MCP servers:
+
+    | Env var | Required | Description |
+    |---|---|---|
+    | `LIGHTSPEED_MCP_SERVERS` | When step uses MCP tools | JSON array of `{name, url, headers?}` objects. Parsed at request time by the query route into `MCPServerConfig` objects passed to `ProviderQueryOptions.mcp_servers`. Header values starting with `file:` are resolved from the referenced file path (secret mount pattern). |
+
     The operator also sets audit and observability env vars based on `AgenticOLSConfig`:
 
     | Env var | Required | Description |
@@ -99,6 +105,7 @@ Cross-references: how options are consumed in code → `how/provider-architectur
 | `LIGHTSPEED_AUDIT_ENABLED` | Audit event logging toggle. Set by operator from `AgenticOLSConfig`. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP gRPC endpoint for span export. Set by operator from `AgenticOLSConfig`. |
 | `/var/run/secrets/llm-credentials/` | LLM credential files mounted by operator (unconditional). |
+| `LIGHTSPEED_MCP_SERVERS` | JSON array of MCP server configs. Parsed into `MCPServerConfig` list for provider. |
 | `build_router(..., skills_dir=..., model=..., max_turns=..., default_timeout_ms=...)` | Library-level defaults when embedding the router. |
 
 ## Constraints

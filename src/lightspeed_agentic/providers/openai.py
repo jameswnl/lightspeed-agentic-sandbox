@@ -204,76 +204,79 @@ class OpenAIProvider(AgentProvider):
         has_skills = skills_path.exists() and any(skills_path.iterdir())
 
         mcp_server_instances: list[Any] = []
-        if options.mcp_servers:
-            from agents.mcp import MCPServerSse, MCPServerSseParams
-
-            from lightspeed_agentic.mcp import resolve_headers
-
-            for server in options.mcp_servers:
-                headers = resolve_headers(server.headers)
-                url = server.url
-                if url.endswith('/sse'):
-                    params = MCPServerSseParams(url=url, headers=headers)
-                    mcp = MCPServerSse(params=params, name=server.name)
-                else:
-                    from agents.mcp import MCPServerStreamableHttp, MCPServerStreamableHttpParams
-                    params = MCPServerStreamableHttpParams(url=url, headers=headers)
-                    mcp = MCPServerStreamableHttp(params=params, name=server.name)
-                await mcp.connect()
-                mcp_server_instances.append(mcp)
-
-        if has_skills:
-            capabilities = [
-                Shell(),
-                Filesystem(),
-                Skills(
-                    lazy_from=LocalDirLazySkillSource(
-                        source=LocalDir(src=skills_path),
-                    )
-                ),
-            ]
-
-            manifest = _build_manifest(options.cwd)
-
-            agent_kwargs: dict[str, Any] = {
-                "name": "lightspeed",
-                "instructions": options.system_prompt,
-                "model": model,
-                "capabilities": capabilities,
-                "default_manifest": manifest,
-            }
-
-            if options.output_schema:
-                agent_kwargs["output_type"] = _RawJsonSchema(options.output_schema)
-            if mcp_server_instances:
-                agent_kwargs["mcp_servers"] = mcp_server_instances
-
-            agent = SandboxAgent(**agent_kwargs)
-
-            run_config = RunConfig(
-                sandbox=SandboxRunConfig(
-                    client=UnixLocalSandboxClient(),
-                ),
-            )
-        else:
-            from agents import Agent
-
-            agent_kwargs = {
-                "name": "lightspeed",
-                "instructions": options.system_prompt,
-                "model": model,
-            }
-            if options.output_schema:
-                agent_kwargs["output_type"] = _RawJsonSchema(options.output_schema)
-            if mcp_server_instances:
-                agent_kwargs["mcp_servers"] = mcp_server_instances
-
-            logger.info("No skills found at %s — using plain Agent (no sandbox capabilities)", options.cwd)
-
-            agent = Agent(**agent_kwargs)
-            run_config = RunConfig()
-
         try:
+            if options.mcp_servers:
+                from agents.mcp import MCPServerSse, MCPServerSseParams
+
+                from lightspeed_agentic.mcp import resolve_headers
+
+                for server in options.mcp_servers:
+                    headers = resolve_headers(server.headers)
+                    url = server.url
+                    if url.endswith('/sse'):
+                        params = MCPServerSseParams(url=url, headers=headers)
+                        mcp = MCPServerSse(params=params, name=server.name)
+                    else:
+                        from agents.mcp import MCPServerStreamableHttp, MCPServerStreamableHttpParams
+                        params = MCPServerStreamableHttpParams(url=url, headers=headers)
+                        mcp = MCPServerStreamableHttp(params=params, name=server.name)
+                    await mcp.connect()
+                    mcp_server_instances.append(mcp)
+
+            if has_skills:
+                capabilities = [
+                    Shell(),
+                    Filesystem(),
+                    Skills(
+                        lazy_from=LocalDirLazySkillSource(
+                            source=LocalDir(src=skills_path),
+                        )
+                    ),
+                ]
+
+                manifest = _build_manifest(options.cwd)
+
+                agent_kwargs: dict[str, Any] = {
+                    "name": "lightspeed",
+                    "instructions": options.system_prompt,
+                    "model": model,
+                    "capabilities": capabilities,
+                    "default_manifest": manifest,
+                }
+
+                if options.output_schema:
+                    agent_kwargs["output_type"] = _RawJsonSchema(options.output_schema)
+                if mcp_server_instances:
+                    agent_kwargs["mcp_servers"] = mcp_server_instances
+
+                agent = SandboxAgent(**agent_kwargs)
+
+                run_config = RunConfig(
+                    sandbox=SandboxRunConfig(
+                        client=UnixLocalSandboxClient(),
+                    ),
+                )
+            else:
+                from agents import Agent
+
+                agent_kwargs = {
+                    "name": "lightspeed",
+                    "instructions": options.system_prompt,
+                    "model": model,
+                }
+                if options.output_schema:
+                    agent_kwargs["output_type"] = _RawJsonSchema(options.output_schema)
+                if mcp_server_instances:
+                    agent_kwargs["mcp_servers"] = mcp_server_instances
+
+                logger.info(
+                    "No skills found at %s — using plain Agent (no sandbox capabilities)",
+                    options.cwd,
+                )
+
+                agent = Agent(**agent_kwargs)
+                run_config = RunConfig()
+
             result = Runner.run_streamed(
                 agent,
                 options.prompt,

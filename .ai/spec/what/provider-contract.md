@@ -38,6 +38,8 @@ Cross-references: HTTP mapping of prompts and timeouts → `run-api.md`. Env and
 
 16. **ProviderQueryOptions — `stream`.** When true, adapters that support partial streaming should yield deltas; when false, they may batch. The HTTP `POST /run` path does not set this flag from the request body.
 
+16b. **ProviderQueryOptions — `mcp_servers`.** Optional list of `MCPServerConfig` objects. When present, the adapter connects to each MCP server before constructing the agent, passes the connected server instances to the SDK agent's `mcp_servers` parameter, and cleans up all connections in a `finally` block. The cleanup scope covers the entire connection + agent construction + execution path so that partially-connected servers are cleaned up on failure. Transport auto-detection: URLs ending in `/sse` use SSE transport; all others use Streamable HTTP.
+
 17. **Thin-adapter principle.** Providers MUST delegate tool execution, command invocation, and skill discovery to their SDKs. Adapters MUST NOT implement custom tool executors that duplicate SDK behavior except for minimal glue (e.g., auto-confirm, path layout).
 
 18. **Structured output.** When `output_schema` is set: Claude uses the SDK’s JSON-schema output format; Gemini sets native response MIME type and response schema on the content config; OpenAI wraps the schema for the agents SDK output type with strict JSON-schema mode enabled for native OpenAI endpoints (api.openai.com) and disabled for custom endpoints (vLLM etc. via `OPENAI_BASE_URL`). When strict mode is enabled, the schema is transformed to add `additionalProperties: false` and list all properties as required at every object level, as OpenAI’s strict mode requires.
@@ -55,6 +57,8 @@ Cross-references: HTTP mapping of prompts and timeouts → `run-api.md`. Env and
 24. **Gemini / exit loop.** When no `output_schema` is set, the adapter registers an SDK exit-loop tool; when `output_schema` is set, that tool is omitted.
 
 25. **OpenAI client.** The OpenAI adapter constructs an async OpenAI client with optional base URL override from environment (see `configuration.md`).
+
+26. **MCP header resolution.** `MCPServerConfig.headers` values starting with `file:` are replaced with the contents of the referenced file path (whitespace-stripped). This supports the Cloud Agents secret mount pattern where auth tokens are injected as files at `/var/secrets/mcp/<server>/<key>`. Missing files fall back to the raw `file:` value.
 
 ## Configuration Surface
 

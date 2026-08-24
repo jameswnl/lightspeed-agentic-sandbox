@@ -107,8 +107,11 @@ COPY --from=builder /app/src /opt/lightspeed/src
 COPY --from=builder /app/pyproject.toml /app/README.md /opt/lightspeed/
 COPY LICENSE /licenses/LICENSE
 
-RUN mkdir -p /app/skills /tmp/agent-workspace /home/agent && \
-    chown -R 1001:0 /app /home/agent /tmp/agent-workspace
+# OpenShell supervisor expects a 'sandbox' user for privilege drop.
+# Create as uid 1001 to match the existing non-root convention.
+RUN useradd -m -u 1001 -d /home/agent sandbox 2>/dev/null || true && \
+    mkdir -p /app/skills /tmp/agent-workspace /home/agent /sandbox && \
+    chown -R 1001:0 /app /home/agent /tmp/agent-workspace /sandbox
 
 ENV SHELL="/bin/bash"
 ENV HOME="/home/agent"
@@ -120,8 +123,7 @@ USER 1001:1001
 
 EXPOSE 8080
 
-ENTRYPOINT ["/usr/bin/catatonit", "--"]
-CMD ["python3.12", "-m", "uvicorn", "lightspeed_agentic.app:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["sleep", "infinity"]
 
 LABEL name="openshift-lightspeed/lightspeed-agentic-sandbox-rhel9" \
       summary="Multi-provider agent sandbox for OpenShift Lightspeed" \

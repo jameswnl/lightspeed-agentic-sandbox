@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Example skill script — executed via run_skill_script.
 
-This script is discovered as `hello.py` (or `scripts/hello.py`) for the
-`k8s-diag` skill. The agent calls it with:
-  run_skill_script(skill_name="k8s-diag", script_name="hello.py", args={"message": "hi"})
+This script is discovered as `scripts/hello.py` for the
+`k8s-diag` skill (pydantic-ai-skills scans root + scripts/ subdir).
+The agent calls it with:
+  run_skill_script(skill_name="k8s-diag", script_name="scripts/hello.py", args={"message": "hi"})
 
 Args are passed as CLI flags: --message "hi"
 """
@@ -19,7 +20,7 @@ def main() -> None:
 
     result = {
         "skill": "k8s-diag",
-        "script": "hello.py",
+        "script": "scripts/hello.py",
         "message": args.message,
         "cluster": args.cluster,
         "status": "executed",

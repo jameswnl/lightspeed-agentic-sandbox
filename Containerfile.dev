@@ -12,11 +12,17 @@ COPY src/ src/
 
 RUN pip install --no-cache-dir '.[openai]'
 
-RUN mkdir -p /app/skills /tmp /sandbox && \
-    chown -R sandbox:sandbox /app /tmp /sandbox
+# All available skills, baked in at /skills (outside /app so per-agent
+# Landlock scoping in OpenShellSpawner doesn't need to touch /app's own
+# grant). Nothing writes here at runtime.
+COPY skills/ /skills/
+
+RUN mkdir -p /tmp /sandbox && \
+    chown -R sandbox:sandbox /app /tmp /sandbox && \
+    chmod -R a+rX /skills
 
 ENV LIGHTSPEED_AGENT_PROVIDER=openai
-ENV LIGHTSPEED_SKILLS_DIR=/app/skills
+ENV LIGHTSPEED_SKILLS_DIR=/skills
 ENV PYTHONPATH="/app/src"
 
 USER sandbox

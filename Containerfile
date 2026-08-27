@@ -2,7 +2,12 @@
 #
 # Multi-provider agent sandbox for OpenShift Lightspeed.
 # Matches the production pod layout:
-#   /app/skills  — skills mounted as OCI image volume
+#   /skills      — all available skills, baked into the image at build time.
+#                  Which subset a given agent can actually see is restricted
+#                  per-run via a Landlock read-only grant on specific
+#                  /skills/<name> subdirectories (see OpenShellSpawner's
+#                  allowed_skills handling in lightspeed-cloud-agents) --
+#                  this image does not filter anything itself.
 #   /tmp         — writable workspace for agent operations
 #   /home/agent  — writable home directory
 #
@@ -107,15 +112,23 @@ COPY --from=builder /app/src /opt/lightspeed/src
 COPY --from=builder /app/pyproject.toml /app/README.md /opt/lightspeed/
 COPY LICENSE /licenses/LICENSE
 
+# All available skills, baked in at /skills (outside /app -- see the header
+# comment). Read-only content: nothing writes here at runtime, so plain
+# root:root ownership with world-read/execute is sufficient; per-agent
+# scoping happens via a Landlock read-only grant on specific
+# /skills/<name> subdirectories, not by restricting what's baked in here.
+COPY skills/ /skills/
+
 # OpenShell supervisor expects a 'sandbox' user for privilege drop.
 # Create as uid 1001 to match the existing non-root convention.
 RUN useradd -m -u 1001 -d /home/agent sandbox 2>/dev/null || true && \
-    mkdir -p /app/skills /tmp/agent-workspace /home/agent /sandbox && \
-    chown -R 1001:0 /app /home/agent /tmp/agent-workspace /sandbox
+    mkdir -p /tmp/agent-workspace /home/agent /sandbox && \
+    chown -R 1001:0 /app /home/agent /tmp/agent-workspace /sandbox && \
+    chmod -R a+rX /skills
 
 ENV SHELL="/bin/bash"
 ENV HOME="/home/agent"
-ENV LIGHTSPEED_SKILLS_DIR="/app/skills"
+ENV LIGHTSPEED_SKILLS_DIR="/skills"
 ENV PYTHONPATH="/opt/lightspeed/src:/opt/app-root/lib64/python3.12/site-packages"
 ENV PATH="/usr/local/bin:${PATH}"
 

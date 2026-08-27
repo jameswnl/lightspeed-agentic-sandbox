@@ -17,12 +17,27 @@ RUN pip install --no-cache-dir '.[openai]'
 # grant). Nothing writes here at runtime.
 COPY skills/ /skills/
 
-RUN mkdir -p /tmp /sandbox && \
+# Copies the allowed_skills subset from /skills into /app/skills at
+# spawn time -- providers discover skills by listing LIGHTSPEED_SKILLS_DIR,
+# and Landlock can't grant partial listing of /skills without granting
+# full listing, so OpenShellSpawner execs this before starting the agent
+# server. /app/skills must be writable by the sandbox user for that copy
+# to succeed.
+COPY scripts/materialize-skills.sh /usr/local/bin/materialize-skills.sh
+RUN chmod 0755 /usr/local/bin/materialize-skills.sh
+
+RUN mkdir -p /app/skills /tmp /sandbox && \
     chown -R sandbox:sandbox /app /tmp /sandbox && \
+    chmod -R g+w /app/skills && \
     chmod -R a+rX /skills
 
 ENV LIGHTSPEED_AGENT_PROVIDER=openai
-ENV LIGHTSPEED_SKILLS_DIR=/skills
+# Providers list this directory to discover skills -- must be the
+# filtered /app/skills copy, not the read-only /skills master (see
+# materialize-skills.sh). OpenShellSpawner also sets this explicitly on
+# every spawn; this default covers anything that runs the image without
+# going through that step (e.g. this repo's own e2e-containers.sh).
+ENV LIGHTSPEED_SKILLS_DIR=/app/skills
 ENV PYTHONPATH="/app/src"
 
 USER sandbox

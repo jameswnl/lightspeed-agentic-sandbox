@@ -2,12 +2,21 @@
 #
 # Multi-provider agent sandbox for OpenShift Lightspeed.
 # Matches the production pod layout:
-#   /skills      — all available skills, baked into the image at build time.
-#                  Which subset a given agent can actually see is restricted
-#                  per-run via a Landlock read-only grant on specific
-#                  /skills/<name> subdirectories (see OpenShellSpawner's
-#                  allowed_skills handling in lightspeed-cloud-agents) --
-#                  this image does not filter anything itself.
+#   /skills      — all available skills, baked into the image at build time,
+#                  read-only. Landlock-scoped per name by OpenShellSpawner
+#                  (see allowed_skills in lightspeed-cloud-agents).
+#   /app/skills  — empty at build time. Providers discover skills by
+#                  *listing* this directory, and Landlock's allow-list model
+#                  can't grant partial listing of /skills without granting
+#                  full listing (which would defeat per-name scoping) --
+#                  so OpenShellSpawner execs materialize-skills.sh
+#                  (baked in below) before starting the agent server,
+#                  copying just the allowed names from /skills into here.
+#                  Must be group-writable (not just group-owned) for that
+#                  copy to succeed regardless of which UID the compute
+#                  driver actually runs the sandbox process as -- see
+#                  lightspeed-cloud-agents issue #201 for the exact
+#                  failure mode this avoids.
 #   /tmp         — writable workspace for agent operations
 #   /home/agent  — writable home directory
 #
@@ -119,16 +128,30 @@ COPY LICENSE /licenses/LICENSE
 # /skills/<name> subdirectories, not by restricting what's baked in here.
 COPY skills/ /skills/
 
+# Copies the allowed_skills subset from /skills into /app/skills at
+# spawn time -- see the header comment and the script's own comments.
+COPY scripts/materialize-skills.sh /usr/local/bin/materialize-skills.sh
+RUN chmod 0755 /usr/local/bin/materialize-skills.sh
+
 # OpenShell supervisor expects a 'sandbox' user for privilege drop.
 # Create as uid 1001 to match the existing non-root convention.
 RUN useradd -m -u 1001 -d /home/agent sandbox 2>/dev/null || true && \
-    mkdir -p /tmp/agent-workspace /home/agent /sandbox && \
+    mkdir -p /app/skills /tmp/agent-workspace /home/agent /sandbox && \
     chown -R 1001:0 /app /home/agent /tmp/agent-workspace /sandbox && \
+    chmod -R g+w /app/skills && \
     chmod -R a+rX /skills
 
 ENV SHELL="/bin/bash"
 ENV HOME="/home/agent"
-ENV LIGHTSPEED_SKILLS_DIR="/skills"
+# Providers discover skills by listing this directory -- it must be the
+# filtered /app/skills copy, not the read-only /skills master, or every
+# baked-in skill loads regardless of allowed_skills. OpenShellSpawner
+# also sets this explicitly on every spawn (belt-and-suspenders); this
+# default matters for anything that runs the image without going
+# through OpenShellSpawner's materialize-skills.sh step (e.g. this
+# repo's own e2e-containers.sh, which already mounts its own test
+# fixtures at /app/skills).
+ENV LIGHTSPEED_SKILLS_DIR="/app/skills"
 ENV PYTHONPATH="/opt/lightspeed/src:/opt/app-root/lib64/python3.12/site-packages"
 ENV PATH="/usr/local/bin:${PATH}"
 

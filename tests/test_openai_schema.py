@@ -185,7 +185,33 @@ def test_build_manifest_without_e2e_output_dir(monkeypatch: pytest.MonkeyPatch) 
 
     manifest = _build_manifest("/app/skills")
     assert manifest.root == "/app/skills"
-    assert manifest.extra_path_grants == ()
+    grant = manifest.extra_path_grants[0]
+    assert grant.path == "/app/skills"
+    assert grant.read_only is True
+
+
+def test_build_manifest_grants_skills_source_dir_for_lazy_skill_loading(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Reproduces the allowed_skills bug: without a grant for the skills
+    directory, LocalDirLazySkillSource can't resolve it since it's outside
+    the process's real cwd, and load_skill fails with "lazy skill source
+    directory is unavailable" for every allowed_skills request.
+    """
+    monkeypatch.delenv("E2E_OUTPUT_DIR", raising=False)
+    from agents.sandbox.entries import LocalDir
+
+    from lightspeed_agentic.providers.openai import _build_manifest
+
+    skills_dir = tmp_path / "skills"
+    (skills_dir / "k8s-diag").mkdir(parents=True)
+
+    manifest = _build_manifest(str(skills_dir))
+
+    resolved = LocalDir(src=skills_dir)._resolve_local_dir_src_root(
+        Path.cwd(), source_grants=manifest.extra_path_grants
+    )
+    assert resolved == skills_dir
 
 
 def test_build_manifest_grants_e2e_output_dir(
@@ -195,8 +221,8 @@ def test_build_manifest_grants_e2e_output_dir(
     from lightspeed_agentic.providers.openai import _build_manifest
 
     manifest = _build_manifest("/app/skills")
-    assert len(manifest.extra_path_grants) == 1
-    grant = manifest.extra_path_grants[0]
+    assert len(manifest.extra_path_grants) == 2
+    grant = manifest.extra_path_grants[1]
     assert grant.path == str(tmp_path.resolve())
     assert grant.read_only is False
 
@@ -208,4 +234,5 @@ def test_build_manifest_skips_e2e_output_dir_outside_temp(
     from lightspeed_agentic.providers.openai import _build_manifest
 
     manifest = _build_manifest("/app/skills")
-    assert manifest.extra_path_grants == ()
+    assert len(manifest.extra_path_grants) == 1
+    assert manifest.extra_path_grants[0].path == "/app/skills"

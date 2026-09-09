@@ -151,20 +151,34 @@ def _validated_e2e_output_dir() -> str | None:
 
 
 def _build_manifest(cwd: str) -> Any:
-    """Build sandbox manifest, optionally granting write access to E2E_OUTPUT_DIR."""
+    """Build sandbox manifest granting read access to the skills source dir,
+    optionally plus write access to E2E_OUTPUT_DIR.
+
+    LocalDirLazySkillSource resolves its LocalDir(src=cwd) against the
+    process's real OS cwd, not the manifest root, so without an explicit
+    grant for `cwd` itself every allowed_skills request fails with
+    "lazy skill source directory is unavailable" (see the has_skills
+    branch in query()).
+    """
     from agents.sandbox.manifest import Manifest, SandboxPathGrant  # type: ignore[attr-defined]
 
-    kwargs: dict[str, Any] = {"root": cwd}
+    grants: list[Any] = [
+        SandboxPathGrant(
+            path=cwd,
+            read_only=True,
+            description="skills source directory",
+        ),
+    ]
     output_dir = _validated_e2e_output_dir()
     if output_dir:
-        kwargs["extra_path_grants"] = (
+        grants.append(
             SandboxPathGrant(
                 path=output_dir,
                 read_only=False,
                 description="e2e skill token output",
-            ),
+            )
         )
-    return Manifest(**kwargs)
+    return Manifest(root=cwd, extra_path_grants=tuple(grants))
 
 
 class OpenAIProvider(AgentProvider):

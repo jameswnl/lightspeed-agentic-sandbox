@@ -8,8 +8,8 @@ Contract (see .ai/spec/what/step-cli.md):
   then exactly one {"v":1,"type":"result","status_code":...,"body":{...}}.
   Everything else written to fd 1 (prints, child processes) lands on stderr.
 - runDir/result.json: the result record, written atomically before the final line.
-- Exit codes: 0 result written, 2 request rejected, 3 internal error, 4 result file
-  written but stdout closed, 124 hard deadline.
+- Exit codes: 0 result written, 2 request rejected (or bad arguments), 3 internal error,
+  4 result file written but result line not delivered, 124 hard deadline.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import ctypes
 import json
 import logging
 import math
@@ -50,24 +51,24 @@ EXIT_NO_STDOUT = 4
 EXIT_DEADLINE = 124
 
 
-def _open_run_dir(path: str) -> int:
+def _open_run_dir(path: str, run_root: str) -> int:
     """Open runDir once and return its fd; raise ValueError unless it is safe to use.
 
-    RUN_ROOT must be a real directory owned by us or root and not writable by others;
+    run_root must be a real directory owned by us or root and not writable by others;
     runDir must be a real 0700 directory directly under it, owned by us.
     """
     name = os.path.basename(path)
-    if os.path.dirname(path) != RUN_ROOT or name in ("", ".", ".."):
-        raise ValueError(f"runDir must be a direct child of {RUN_ROOT}")
+    if os.path.dirname(path) != run_root or name in ("", ".", ".."):
+        raise ValueError(f"runDir must be a direct child of {run_root}")
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     try:
-        root_fd = os.open(RUN_ROOT, flags)
+        root_fd = os.open(run_root, flags)
     except OSError:
-        raise ValueError(f"{RUN_ROOT} must be an existing directory") from None
+        raise ValueError(f"{run_root} must be an existing directory") from None
     try:
         st = os.fstat(root_fd)
         if st.st_uid not in (os.getuid(), 0) or st.st_mode & 0o022:
-            raise ValueError(f"{RUN_ROOT} must be owned by us or root and not writable by others")
+            raise ValueError(f"{run_root} must be owned by us or root and not writable by others")
         try:
             dir_fd = os.open(name, flags, dir_fd=root_fd)
         except OSError:
@@ -101,16 +102,24 @@ def _write_result(dir_fd: int, content: str) -> None:
             os.unlink(tmp, dir_fd=dir_fd)
 
 
+def _set_non_dumpable() -> None:
+    """On Linux, block same-uid ptrace and /proc/<pid>/fd access to this process."""
+    if sys.platform != "linux":
+        return
+    try:
+        failed = ctypes.CDLL(None, use_errno=True).prctl(4, 0, 0, 0, 0) != 0  # PR_SET_DUMPABLE
+    except (OSError, AttributeError):
+        failed = True
+    if failed:
+        logger.warning("[step] prctl(PR_SET_DUMPABLE, 0) failed: errno %d", ctypes.get_errno())
+
+
 def _harden_process() -> None:
-    """Point stdin at /dev/null and, on Linux, block same-uid ptrace and /proc/<pid>/fd access."""
+    """Point stdin at /dev/null and make the process non-dumpable."""
     devnull = os.open(os.devnull, os.O_RDONLY)
     os.dup2(devnull, 0)
     os.close(devnull)
-    if sys.platform == "linux":
-        import ctypes
-
-        with contextlib.suppress(OSError, AttributeError):
-            ctypes.CDLL(None).prctl(4, 0, 0, 0, 0)  # 4 = PR_SET_DUMPABLE
+    _set_non_dumpable()
 
 
 def _hard_deadline(_signum: int, _frame: FrameType | None) -> None:
@@ -118,7 +127,18 @@ def _hard_deadline(_signum: int, _frame: FrameType | None) -> None:
     os._exit(EXIT_DEADLINE)
 
 
-def main(argv: list[str] | None = None, *, provider: AgentProvider | None = None) -> int:
+def _undelivered(_signum: int, _frame: FrameType | None) -> None:
+    logger.error("[step] result line not delivered before the grace period, exiting")
+    os._exit(EXIT_NO_STDOUT)
+
+
+def main(
+    argv: list[str] | None = None,
+    *,
+    provider: AgentProvider | None = None,
+    run_root: str = RUN_ROOT,
+) -> int:
+    """Run one step. provider and run_root are test hooks, never set from the request."""
     parser = argparse.ArgumentParser(prog="python3 -P -m lightspeed_agentic.step")
     parser.add_argument(
         "--grace-seconds",
@@ -128,16 +148,22 @@ def main(argv: list[str] | None = None, *, provider: AgentProvider | None = None
     )
     args = parser.parse_args(argv)
 
-    with contextlib.suppress(PermissionError):  # already a process group leader
-        os.setsid()
-
-    # Keep a private fd for the real stdout and point fd 1 at stderr, so only
-    # protocol lines ever reach stdout.
-    proto_fd = os.dup(1)
-    os.dup2(2, 1)
     logging.basicConfig(
         level=logging.INFO, stream=sys.stderr, format="%(levelname)s %(name)s: %(message)s"
     )
+    try:
+        with contextlib.suppress(PermissionError):  # already a process group leader
+            os.setsid()
+        # Keep a private fd for the real stdout and point fd 1 at stderr, so only
+        # protocol lines ever reach stdout.
+        proto_fd = os.dup(1)
+        os.dup2(2, 1)
+        raw = sys.stdin.buffer.readline(MAX_STDIN_BYTES + 1)
+        _harden_process()
+    except Exception:
+        logger.exception("[step] startup failed")
+        return EXIT_INTERNAL
+
     stdout_open = True
 
     def emit(line: str) -> bool:
@@ -166,8 +192,6 @@ def main(argv: list[str] | None = None, *, provider: AgentProvider | None = None
         emit(json.dumps({"v": 1, "type": "result", "status_code": status_code, "body": body}))
         return EXIT_REJECTED
 
-    raw = sys.stdin.buffer.readline(MAX_STDIN_BYTES + 1)
-    _harden_process()
     if len(raw) > MAX_STDIN_BYTES:
         return reject(413, {"error": f"Request exceeds {MAX_STDIN_BYTES} bytes"})
     try:
@@ -176,7 +200,7 @@ def main(argv: list[str] | None = None, *, provider: AgentProvider | None = None
         detail = json.loads(e.json(include_url=False, include_input=False))
         return reject(422, {"error": "Invalid request", "detail": detail})
     try:
-        dir_fd = _open_run_dir(req.runDir)
+        dir_fd = _open_run_dir(req.runDir, run_root)
     except ValueError as e:
         return reject(422, {"error": str(e)})
 
@@ -223,7 +247,12 @@ def main(argv: list[str] | None = None, *, provider: AgentProvider | None = None
         logger.exception("[step] internal error")
         return EXIT_INTERNAL
 
-    return EXIT_OK if emit(line) else EXIT_NO_STDOUT
+    # Bound the final write too: a reader that never drains stdout must not hang us.
+    signal.signal(signal.SIGALRM, _undelivered)
+    signal.alarm(max(1, args.grace_seconds))
+    delivered = emit(line)
+    signal.alarm(0)
+    return EXIT_OK if delivered else EXIT_NO_STDOUT
 
 
 if __name__ == "__main__":

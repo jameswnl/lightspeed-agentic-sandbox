@@ -16,6 +16,7 @@ The step CLI runs exactly one agent step through a process exec instead of HTTP:
    - exactly one final `{"v":1,"type":"result","status_code":<int>,"body":{...}}`. `status_code` and `body` are what `/run` would return.
    - Lines are strict JSON (no `NaN`/`Infinity`). An event that cannot be serialized strictly is dropped with a warning on stderr. A result record that cannot be serialized strictly is an internal error (exit 3). Result bodies are already JSON-mode dumps, so non-finite values arrive there as `null`, the same as `/run`.
    - If writing to stdout fails (for example the reader closed it), the CLI logs once, stops writing protocol lines, and finishes the run so `result.json` stays valid (exit 4).
+   - The final result line is written under a fresh `--grace-seconds` alarm. If the reader does not drain stdout in time, the CLI exits 4. The line may be missing or truncated, but `result.json` is complete.
 5. **Logging.** All logging goes to stderr.
 6. **Result file.** Before emitting the final result line, the CLI writes the same result record to `runDir/result.json`. It writes a temp file with `O_CREAT|O_EXCL|O_NOFOLLOW`, calls `fsync`, then hard-links it to `result.json` and removes the temp file. The link fails if `result.json` already exists (including as a symlink, or if it was created mid-run); the CLI then exits 3 without replacing it. The temp file is always removed.
 7. **pid file.** After validation the CLI writes its PID to `runDir/pid`. It calls `setsid()` at startup, so the PID is also its process group ID: `kill -TERM -<pid>` reaches the CLI and every child.
@@ -30,15 +31,15 @@ The step CLI runs exactly one agent step through a process exec instead of HTTP:
 
     | Code | Meaning |
     |---|---|
-    | 0 | Result written, any `status_code` |
-    | 2 | Request rejected |
-    | 3 | Internal error before a result. Provider or config construction, pid/result file write, non-strict result JSON. No result line. |
-    | 4 | `result.json` written, but stdout was closed so the result line was not delivered. |
+    | 0 | Result file written and result line delivered, any `status_code` |
+    | 2 | Request rejected (one result line, rule 10), or invalid command-line arguments (argparse usage on stderr, no result line) |
+    | 3 | Internal error, no result line: startup failure (stdin/stdout fd setup, stdin closed, hardening), provider or config construction, pid/result file write, non-strict result JSON |
+    | 4 | `result.json` written, but the result line was not delivered: stdout closed, or not drained within the grace period |
     | 124 | Hard deadline |
     | 137 / 143 (signal) | Killed |
 
 12. **Secrets.** The CLI reads no secrets from argv or stdin. Provider configuration and credentials come from the same env as `/run`.
-13. **Process hardening.** After reading the request the CLI points fd 0 at `/dev/null`, so children never inherit the request pipe. On Linux it calls `prctl(PR_SET_DUMPABLE, 0)`, which blocks same-uid ptrace and `/proc/<pid>/fd` access to the CLI process itself. `execve` resets this for child processes.
+13. **Process hardening.** After reading the request the CLI points fd 0 at `/dev/null`, so children never inherit the request pipe. On Linux it calls `prctl(PR_SET_DUMPABLE, 0)` (failure is logged as a warning, not fatal), which blocks same-uid ptrace and `/proc/<pid>/fd` access to the CLI process itself. `execve` resets this for child processes.
 
 ## Trust model (runner obligations)
 

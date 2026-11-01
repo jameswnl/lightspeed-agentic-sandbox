@@ -129,6 +129,8 @@ def make_provider(scenario: str) -> AgentProvider:
             return _RaisingProvider(ConnectionError("connection refused"))
         case "agent_error":
             return _RaisingProvider(ValueError("boom"))
+        case "huge_error":
+            return _RaisingProvider(ValueError("x" * 1_000_000))
         case "nan":
             return MockProvider(
                 [
@@ -154,6 +156,11 @@ def make_provider(scenario: str) -> AgentProvider:
 
 
 if __name__ == "__main__":
-    from lightspeed_agentic.step import main
+    from lightspeed_agentic.step import RUN_ROOT, main
 
-    sys.exit(main(sys.argv[2:], provider=make_provider(sys.argv[1])))
+    if sys.argv[1] == "openai_usage":
+        from tests.test_sdk_patches import simulate_required_cache_write_tokens
+
+        simulate_required_cache_write_tokens()
+    run_root = os.environ.get("STEP_FAKE_RUN_ROOT", RUN_ROOT)
+    sys.exit(main(sys.argv[2:], provider=make_provider(sys.argv[1]), run_root=run_root))

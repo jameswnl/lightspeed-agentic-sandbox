@@ -315,7 +315,7 @@ def test_format_context_combined_fields() -> None:
     assert "Title: Fix RBAC" in text
 
 
-def testresolve_router_model_prefers_explicit_model() -> None:
+def test_resolve_router_model_prefers_explicit_model() -> None:
     assert resolve_router_model("openai", "custom-model") == "custom-model"
 
 
@@ -343,7 +343,7 @@ def test_resolve_startup_model_returns_none_when_unset(
     assert resolve_startup_model("openai") is None
 
 
-def testresolve_router_model_prefers_lightspeed_when_both_set(
+def test_resolve_router_model_prefers_lightspeed_when_both_set(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("LIGHTSPEED_MODEL", "gpt-5-mini")
@@ -351,13 +351,13 @@ def testresolve_router_model_prefers_lightspeed_when_both_set(
     assert resolve_router_model("openai") == "gpt-5-mini"
 
 
-def testresolve_router_model_uses_sdk_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_router_model_uses_sdk_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("LIGHTSPEED_MODEL", raising=False)
     monkeypatch.setenv("OPENAI_MODEL", "gpt-4.1")
     assert resolve_router_model("openai") == "gpt-4.1"
 
 
-def testresolve_router_model_falls_back_to_lightspeed_model(
+def test_resolve_router_model_falls_back_to_lightspeed_model(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("OPENAI_MODEL", raising=False)
@@ -365,7 +365,7 @@ def testresolve_router_model_falls_back_to_lightspeed_model(
     assert resolve_router_model("openai") == "gpt-5-mini"
 
 
-def testresolve_router_model_uses_default_when_unset(
+def test_resolve_router_model_uses_default_when_unset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from lightspeed_agentic.types import DEFAULT_MODEL

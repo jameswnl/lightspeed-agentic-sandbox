@@ -338,16 +338,18 @@ def test_result_created_mid_run_is_not_overwritten(run_dir):
     assert sorted(p.name for p in Path(run_dir).iterdir()) == ["pid", "result.json"]
 
 
-def test_run_root_writable_by_others_rejected(run_dir):
-    RUN_ROOT.chmod(0o777)
-    try:
-        proc = _run(_line(_request(run_dir)), None)
-    finally:
-        RUN_ROOT.chmod(0o700)
+def test_run_root_writable_by_others_rejected(tmp_path):
+    run_root = tmp_path / "lsrun"
+    run_dir = run_root / "step"
+    run_dir.mkdir(parents=True, mode=0o700)
+    run_root.chmod(0o777)
 
-    assert proc.returncode == 2
+    proc = _run(_line(_request(str(run_dir))), "ok", STEP_FAKE_RUN_ROOT=str(run_root))
+
+    run_root.chmod(0o700)
+    assert proc.returncode == 2, proc.stderr.decode()
     assert _result(_records(proc.stdout))["status_code"] == 422
-    assert not Path(run_dir, "pid").exists()
+    assert not (run_dir / "pid").exists()
 
 
 def test_run_dir_symlink_rejected(run_dir):
@@ -374,3 +376,60 @@ def test_timeout_ms_capped(run_dir):
 
     assert proc.returncode == 2, proc.stderr.decode()
     assert _result(_records(proc.stdout))["status_code"] == 422
+
+
+def test_unread_stdout_bounds_final_result_line(run_dir):
+    proc = subprocess.Popen(  # noqa: S603
+        [*_cmd("huge_error"), "--grace-seconds", "1"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        cwd="/",
+        env=_env(),
+    )
+    try:
+        assert proc.stdin is not None
+        proc.stdin.write(_line(_request(run_dir)))
+        proc.stdin.close()
+        assert proc.wait(timeout=20) == 4
+        result = json.loads(Path(run_dir, "result.json").read_text())
+        assert result["body"]["summary"].startswith("Agent error: xxx")
+    finally:
+        proc.kill()
+        proc.wait()
+
+
+def test_closed_stdin_is_internal_error():
+    proc = subprocess.run(  # noqa: S603
+        _cmd(None),
+        capture_output=True,
+        cwd="/",
+        env=_env(),
+        timeout=60,
+        check=False,
+        preexec_fn=lambda: os.close(0),
+    )
+
+    assert proc.returncode == 3, proc.stderr.decode()
+    assert proc.stdout == b""
+
+
+def test_bad_arguments_exit_2_without_result_line():
+    proc = _run(b"", None, "--bogus")
+
+    assert proc.returncode == 2
+    assert proc.stdout == b""
+
+
+def test_prctl_failure_is_logged(monkeypatch, caplog):
+    from lightspeed_agentic import step
+
+    class FailingLibc:
+        def prctl(self, *_args: int) -> int:
+            return -1
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr("ctypes.CDLL", lambda *_args, **_kwargs: FailingLibc())
+    with caplog.at_level("WARNING", logger="lightspeed_agentic"):
+        step._set_non_dumpable()
+    assert "PR_SET_DUMPABLE" in caplog.text

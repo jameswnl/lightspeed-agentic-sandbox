@@ -110,10 +110,10 @@ def test_happy_path_contract(run_dir):
 
 
 def test_openai_agents_usage_workaround_applied(run_dir):
-    proc = _run(_line(_request(run_dir)), "openai_usage_default")
+    proc = _run(_line(_request(run_dir)), "openai_usage")
 
     assert proc.returncode == 0, proc.stderr.decode()
-    assert _result(_records(proc.stdout))["body"]["summary"] == "0"
+    assert _result(_records(proc.stdout))["body"] == {"success": True, "summary": "mock result"}
 
 
 def test_stdout_clean_under_noise(run_dir):

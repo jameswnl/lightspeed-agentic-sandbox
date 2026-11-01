@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import json
 import logging
 import subprocess
 import sys
@@ -54,14 +53,15 @@ class NoisyProvider(MockProvider):
             yield event
 
 
-class OpenAIUsageDefaultProvider(MockProvider):
-    """Reports the openai-agents cache_write_tokens default seen inside the CLI process."""
+class OpenAIUsageProvider(MockProvider):
+    """Builds openai usage details without cache_write_tokens inside the CLI process."""
 
-    async def query(self, _options: ProviderQueryOptions) -> AsyncIterator[ProviderEvent]:
-        from agents.usage import InputTokensDetails
+    async def query(self, options: ProviderQueryOptions) -> AsyncIterator[ProviderEvent]:
+        from tests.test_sdk_patches import build_usage_without_cache_write_tokens
 
-        default = InputTokensDetails.model_fields["cache_write_tokens"].default
-        yield ResultEvent(text=json.dumps({"success": True, "summary": repr(default)}))
+        build_usage_without_cache_write_tokens()
+        async for event in super().query(options):
+            yield event
 
 
 class HangProvider(MockProvider):
@@ -105,8 +105,8 @@ def make_provider(scenario: str) -> AgentProvider:
             return _RaisingProvider(ValueError("boom"))
         case "noisy":
             return NoisyProvider()
-        case "openai_usage_default":
-            return OpenAIUsageDefaultProvider()
+        case "openai_usage":
+            return OpenAIUsageProvider()
         case "hang":
             return HangProvider()
         case "stubborn":

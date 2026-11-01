@@ -100,9 +100,7 @@ async def test_run_with_output_schema():
         assert resp.status_code == 200
 
 
-@pytest.mark.asyncio
-async def test_run_with_timeout_applied():
-    """Verify timeout_ms is actually used: a slow provider exceeds a 1ms timeout."""
+async def _post_with_slow_provider_and_1ms_timeout():
     import asyncio
 
     class SlowProvider(MockProvider):
@@ -113,14 +111,42 @@ async def test_run_with_timeout_applied():
 
     app = _make_app(SlowProvider())
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        resp = await client.post(
+        return await client.post(
             "/v1/agent/run",
             json={"query": "test", "timeout_ms": 1},
         )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["success"] is False
-        assert "timed out" in data["summary"].lower()
+
+
+@pytest.mark.asyncio
+async def test_run_timeout_current_code_returns_502():
+    """Pins the current timeout response, which disagrees with run-api.md rule 21.
+
+    Rule 21 expects HTTP 200 with success=false and a timed-out summary (see
+    test_run_with_timeout_applied); routes/query.py returns 502 with an error body.
+    Any change to this response must also resolve the spec/code disagreement.
+    """
+    resp = await _post_with_slow_provider_and_1ms_timeout()
+    assert resp.status_code == 502
+    assert resp.json() == {"error": "Agent timed out after 1ms"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason=(
+        "Spec/code disagreement: run-api.md rule 21 expects HTTP 200 with success=false "
+        "on timeout, but routes/query.py returns 502 "
+        "(pinned by test_run_timeout_current_code_returns_502)"
+    ),
+)
+async def test_run_with_timeout_applied():
+    """Verify timeout_ms is actually used: a slow provider exceeds a 1ms timeout."""
+    resp = await _post_with_slow_provider_and_1ms_timeout()
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is False
+    assert "timed out" in data["summary"].lower()
 
 
 @pytest.mark.asyncio

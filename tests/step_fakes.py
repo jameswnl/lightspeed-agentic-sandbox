@@ -16,6 +16,8 @@ import logging
 import os
 import subprocess
 import sys
+import threading
+import time
 from collections.abc import AsyncIterator
 
 from lightspeed_agentic.types import (
@@ -90,6 +92,36 @@ class ProcessStateProvider(MockProvider):
             yield event
 
 
+class SlowPublishProvider(MockProvider):
+    """Makes every later fsync block, so result publication hangs after the run."""
+
+    async def query(self, options: ProviderQueryOptions) -> AsyncIterator[ProviderEvent]:
+        os.fsync = lambda _fd: time.sleep(3600)
+        async for event in super().query(options):
+            yield event
+
+
+def _fill_stderr_later() -> None:
+    time.sleep(0.5)
+    os.set_blocking(2, False)
+    with contextlib.suppress(BlockingIOError):
+        while True:
+            os.write(2, b"e" * 4096)
+    os.set_blocking(2, True)
+
+
+class FillStderrLaterProvider(_RaisingProvider):
+    """Fails fast (no events), then fills stderr while the CLI waits to deliver the result."""
+
+    def __init__(self) -> None:
+        super().__init__(ValueError("boom"))
+
+    async def query(self, options: ProviderQueryOptions) -> AsyncIterator[ProviderEvent]:
+        threading.Thread(target=_fill_stderr_later, daemon=True).start()
+        async for event in super().query(options):
+            yield event
+
+
 class HangProvider(MockProvider):
     async def query(self, _options: ProviderQueryOptions) -> AsyncIterator[ProviderEvent]:
         await asyncio.sleep(3600)
@@ -148,6 +180,10 @@ def make_provider(scenario: str) -> AgentProvider:
             return NoisyProvider()
         case "openai_usage":
             return OpenAIUsageProvider()
+        case "slow_publish":
+            return SlowPublishProvider()
+        case "fill_stderr_later":
+            return FillStderrLaterProvider()
         case "hang":
             return HangProvider()
         case "stubborn":

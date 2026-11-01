@@ -8,7 +8,7 @@ The step CLI runs exactly one agent step through a process exec instead of HTTP:
 
 ## Rules
 
-1. **stdin.** Exactly one UTF-8 JSON object, terminated by a newline or EOF. The CLI reads at most 1 MiB (1,048,576 bytes, including the newline) and stops at the first newline, so it never waits for EOF.
+1. **stdin.** Exactly one UTF-8 JSON object, terminated by a newline or EOF. The CLI reads at most 1 MiB (1,048,576 bytes, including the newline) and stops at the first newline, so it never waits for EOF. No CLI timer runs while startup input is read (no alarm is armed until the request is validated): bounding a caller that never sends a line is the exec caller's job (exec timeout).
 2. **StepRequest schema.** `RunRequest` fields plus `stepId` (`^[a-z0-9-]{1,40}$`), `runDir` (string) and optional `traceparent` (W3C header value). `timeout_ms` is capped at 86400000 (24 h). Unknown keys are rejected (`extra="forbid"`). Trace context comes only from `traceparent` on stdin, never from env.
 3. **runDir.** Must be a direct child of `/tmp/lsrun/`, already exist, be a real directory (not a symlink), have mode `0700` and be owned by the current uid. `/tmp/lsrun` itself must be a real directory owned by the current uid or root and not group- or world-writable. The caller creates both; the CLI only checks them. The CLI opens runDir once (`O_DIRECTORY|O_NOFOLLOW`) and does all later file operations relative to that fd.
 4. **stdout protocol.** JSONL only. At startup the CLI duplicates fd 1 into a private protocol handle and points fd 1 at stderr, so prints, child processes and stdout loggers all land on stderr. Protocol lines:
@@ -16,26 +16,33 @@ The step CLI runs exactly one agent step through a process exec instead of HTTP:
    - exactly one final `{"v":1,"type":"result","status_code":<int>,"body":{...}}`. `status_code` and `body` are what `/run` would return.
    - Lines are strict JSON (no `NaN`/`Infinity`). An event that cannot be serialized strictly is dropped with a warning on stderr. A result record that cannot be serialized strictly is an internal error (exit 3). Result bodies are already JSON-mode dumps, so non-finite values arrive there as `null`, the same as `/run`.
    - If writing to stdout fails (for example the reader closed it), the CLI logs once, stops writing protocol lines, and finishes the run so `result.json` stays valid (exit 4).
-   - The final result line is written under a fresh `--grace-seconds` alarm. If the reader does not drain stdout in time, the CLI exits 4. The line may be missing or truncated, but `result.json` is complete.
+   - Publication of `result.json` and delivery of the final result line run under one finalization alarm (rule 9). If the reader does not drain stdout in time, the CLI exits 4. The line may be missing or truncated.
 5. **Logging.** All logging goes to stderr.
 6. **Result file.** Before emitting the final result line, the CLI writes the same result record to `runDir/result.json`. It writes a temp file with `O_CREAT|O_EXCL|O_NOFOLLOW`, calls `fsync`, then hard-links it to `result.json` and removes the temp file. The link fails if `result.json` already exists (including as a symlink, or if it was created mid-run); the CLI then exits 3 without replacing it. The temp file is always removed.
 7. **pid file.** After validation the CLI writes its PID to `runDir/pid`. It calls `setsid()` at startup, so the PID is also its process group ID: `kill -TERM -<pid>` reaches the CLI and every child.
 8. **Soft deadline.** `timeout_ms` (default 300000) is enforced by `execute_run` exactly as on `/run`. A timeout gives a result with status 502 and exit 0.
-9. **Hard deadline.** `SIGALRM` fires at `ceil(timeout_ms/1000) + grace` seconds (`--grace-seconds`, default 30). It exits with 124 and writes no result. It bounds providers that ignore cancellation. The alarm is cancelled before the result is published, so the result file and the result line are both present or both absent relative to the deadline. `os._exit` does not signal children.
+9. **Deadlines.** From request validation to exit, some `SIGALRM` is always armed. Deadline handlers only call `os._exit`; they do not log or touch files, so a full stderr pipe or a hung filesystem cannot block them. `os._exit` does not signal children.
+   - **Hard deadline:** armed after validation at `ceil(timeout_ms/1000) + grace` seconds (`--grace-seconds`, default 30). It bounds the run, including providers that ignore cancellation. Firing exits 124.
+   - **Finalization deadline:** when the result is ready, `alarm(grace)` replaces the hard deadline (no gap). It bounds publication (temp write, `fsync`, link) and delivery of the result line. Firing exits 124 if publication has not been recorded as complete, else 4.
+   - Publication and exit classification cannot be committed atomically: a deadline can land just after `result.json` is linked. So:
+     - exit 0 promises a complete `result.json` and a delivered result line;
+     - exit 4 promises a complete `result.json` (delivery failed after publication);
+     - every other exit (2 aside, see rule 10) makes no promise about absence: `result.json` may be missing or may be complete, and a `.result.json.<pid>` temp file may remain. `result.json` is never partial (it only appears via `link` of an fsynced file).
+   - The runner MUST validate any `result.json` as untrusted data and MUST NOT infer success from its existence alone.
 10. **Rejections.** Exit 2, with a single result line and no result file:
     - stdin over 1 MiB → 413 `{"error"}`
     - invalid JSON or schema → 422 `{"error","detail"}`. `detail` holds the pydantic errors without input values.
     - invalid `runDir` → 422 `{"error"}`
-    Rejections happen before the provider is constructed.
+    Rejections happen before the provider is constructed. `detail` keeps at most 20 errors, without context, and truncates `loc` strings to 100 characters, so the line stays small. Rejection delivery runs under a `--grace-seconds` alarm; if stdout is not drained in time the CLI exits 2 (the line may be missing or truncated).
 11. **Exit codes.**
 
     | Code | Meaning |
     |---|---|
     | 0 | Result file written and result line delivered, any `status_code` |
-    | 2 | Request rejected (one result line, rule 10), or invalid command-line arguments (argparse usage on stderr, no result line) |
-    | 3 | Internal error, no result line: startup failure (stdin/stdout fd setup, stdin closed, hardening), provider or config construction, pid/result file write, non-strict result JSON |
-    | 4 | `result.json` written, but the result line was not delivered: stdout closed, or not drained within the grace period |
-    | 124 | Hard deadline |
+    | 2 | Request rejected (rule 10: one result line, possibly undelivered if stdout was not drained), or invalid command-line arguments (argparse usage on stderr, no result line). No result file. |
+    | 3 | Internal error, no result line (no promise about `result.json`, rule 9): startup failure (stdin/stdout fd setup, stdin closed, hardening), provider or config construction, pid/result file write, non-strict result JSON |
+    | 4 | `result.json` complete, but the result line was not delivered: stdout closed, or not drained before the finalization deadline |
+    | 124 | Hard or finalization deadline before publication was recorded complete (no promise about `result.json`, rule 9) |
     | 137 / 143 (signal) | Killed |
 
 12. **Secrets.** The CLI reads no secrets from argv or stdin. Provider configuration and credentials come from the same env as `/run`.

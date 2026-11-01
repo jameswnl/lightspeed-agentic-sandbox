@@ -50,6 +50,12 @@ EXIT_INTERNAL = 3
 EXIT_NO_STDOUT = 4
 EXIT_DEADLINE = 124
 
+MAX_DETAIL_ERRORS = 20
+MAX_DETAIL_LOC_CHARS = 100
+
+# Set once result.json is published; read by the finalization deadline handler.
+_published = False
+
 
 def _open_run_dir(path: str, run_root: str) -> int:
     """Open runDir once and return its fd; raise ValueError unless it is safe to use.
@@ -122,14 +128,18 @@ def _harden_process() -> None:
     _set_non_dumpable()
 
 
+# Deadline handlers only call os._exit: logging or file cleanup could block
+# (for example on a full stderr pipe) and defeat the deadline.
 def _hard_deadline(_signum: int, _frame: FrameType | None) -> None:
-    logger.error("[step] hard deadline exceeded, exiting")
     os._exit(EXIT_DEADLINE)
 
 
-def _undelivered(_signum: int, _frame: FrameType | None) -> None:
-    logger.error("[step] result line not delivered before the grace period, exiting")
-    os._exit(EXIT_NO_STDOUT)
+def _reject_deadline(_signum: int, _frame: FrameType | None) -> None:
+    os._exit(EXIT_REJECTED)
+
+
+def _finalize_deadline(_signum: int, _frame: FrameType | None) -> None:
+    os._exit(EXIT_NO_STDOUT if _published else EXIT_DEADLINE)
 
 
 def main(
@@ -139,6 +149,7 @@ def main(
     run_root: str = RUN_ROOT,
 ) -> int:
     """Run one step. provider and run_root are test hooks, never set from the request."""
+    global _published
     parser = argparse.ArgumentParser(prog="python3 -P -m lightspeed_agentic.step")
     parser.add_argument(
         "--grace-seconds",
@@ -188,8 +199,11 @@ def main(
         emit(line)
 
     def reject(status_code: int, body: dict[str, Any]) -> int:
+        signal.signal(signal.SIGALRM, _reject_deadline)
+        signal.alarm(max(1, args.grace_seconds))
         logger.warning("[step] request rejected (%d): %s", status_code, body["error"])
         emit(json.dumps({"v": 1, "type": "result", "status_code": status_code, "body": body}))
+        signal.alarm(0)
         return EXIT_REJECTED
 
     if len(raw) > MAX_STDIN_BYTES:
@@ -197,7 +211,14 @@ def main(
     try:
         req = StepRequest.model_validate_json(raw)
     except ValidationError as e:
-        detail = json.loads(e.json(include_url=False, include_input=False))
+        errors = e.errors(include_url=False, include_input=False, include_context=False)
+        detail = [
+            {
+                **err,
+                "loc": [x[:MAX_DETAIL_LOC_CHARS] if isinstance(x, str) else x for x in err["loc"]],
+            }
+            for err in errors[:MAX_DETAIL_ERRORS]
+        ]
         return reject(422, {"error": "Invalid request", "detail": detail})
     try:
         dir_fd = _open_run_dir(req.runDir, run_root)
@@ -239,17 +260,18 @@ def main(
             "body": outcome.body,
         }
         line = json.dumps(record, allow_nan=False)
-        # Past this point the result is published in full or not at all: the hard
-        # deadline can no longer fire between the result file and the result line.
-        signal.alarm(0)
+        # Hand over from the hard deadline to one finalization deadline covering
+        # publication and delivery. alarm() replaces the pending alarm, so no stage
+        # runs without one.
+        signal.signal(signal.SIGALRM, _finalize_deadline)
+        signal.alarm(max(1, args.grace_seconds))
         _write_result(dir_fd, line)
+        _published = True
     except Exception:
         logger.exception("[step] internal error")
+        signal.alarm(0)
         return EXIT_INTERNAL
 
-    # Bound the final write too: a reader that never drains stdout must not hang us.
-    signal.signal(signal.SIGALRM, _undelivered)
-    signal.alarm(max(1, args.grace_seconds))
     delivered = emit(line)
     signal.alarm(0)
     return EXIT_OK if delivered else EXIT_NO_STDOUT

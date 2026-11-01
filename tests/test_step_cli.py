@@ -7,6 +7,7 @@ provider; rejection cases run the shipped module directly.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shutil
@@ -433,3 +434,137 @@ def test_prctl_failure_is_logged(monkeypatch, caplog):
     with caplog.at_level("WARNING", logger="lightspeed_agentic"):
         step._set_non_dumpable()
     assert "PR_SET_DUMPABLE" in caplog.text
+
+
+def _full_pipe() -> tuple[int, int]:
+    """Return (read, write) ends of a pipe whose buffer is already full."""
+    read_end, write_end = os.pipe()
+    os.set_blocking(write_end, False)
+    for chunk in (65536, 1):
+        with contextlib.suppress(BlockingIOError):
+            while True:
+                os.write(write_end, b"x" * chunk)
+    os.set_blocking(write_end, True)
+    return read_end, write_end
+
+
+def _spawn(scenario: str | None, stdin: bytes, *args: str, stdout: int, stderr: int) -> int:
+    """Run the CLI with the given stdout/stderr fds; return its exit code.
+
+    Fails if the CLI does not exit by itself within 20 s.
+    """
+    proc = subprocess.Popen(  # noqa: S603
+        _cmd(scenario, *args),
+        stdin=subprocess.PIPE,
+        stdout=stdout,
+        stderr=stderr,
+        cwd="/",
+        env=_env(),
+    )
+    try:
+        assert proc.stdin is not None
+        proc.stdin.write(stdin)
+        proc.stdin.close()
+        return proc.wait(timeout=20)
+    finally:
+        proc.kill()
+        proc.wait()
+
+
+def _assert_absent_or_complete(run_dir: str) -> None:
+    path = Path(run_dir, "result.json")
+    if path.exists():
+        assert json.loads(path.read_text())["type"] == "result"
+
+
+def test_hard_deadline_exits_with_stderr_full(run_dir):
+    err_r, err_w = _full_pipe()
+    try:
+        start = time.monotonic()
+        code = _spawn(
+            "ok",
+            _line(_request(run_dir, timeout_ms=200)),
+            "--grace-seconds",
+            "1",
+            stdout=subprocess.DEVNULL,
+            stderr=err_w,
+        )
+        assert code == 124
+        assert time.monotonic() - start < 10
+        _assert_absent_or_complete(run_dir)
+    finally:
+        os.close(err_r)
+        os.close(err_w)
+
+
+def test_final_delivery_deadline_exits_with_stderr_full(run_dir):
+    out_r, out_w = _full_pipe()
+    err_r, err_w = os.pipe()
+    try:
+        start = time.monotonic()
+        code = _spawn(
+            "fill_stderr_later",
+            _line(_request(run_dir)),
+            "--grace-seconds",
+            "2",
+            stdout=out_w,
+            stderr=err_w,
+        )
+        assert code == 4
+        assert time.monotonic() - start < 10
+        assert json.loads(Path(run_dir, "result.json").read_text())["status_code"] == 200
+    finally:
+        for fd in (out_r, out_w, err_r, err_w):
+            os.close(fd)
+
+
+def test_blocked_publication_is_bounded(run_dir):
+    start = time.monotonic()
+    code = _spawn(
+        "slow_publish",
+        _line(_request(run_dir)),
+        "--grace-seconds",
+        "1",
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    assert code == 124
+    assert time.monotonic() - start < 10
+    _assert_absent_or_complete(run_dir)
+
+
+def test_rejection_with_huge_unknown_key_is_small_and_bounded():
+    out_r, out_w = os.pipe()
+    try:
+        req = {"query": "q", "stepId": "s", "runDir": "/tmp/lsrun/x", "k" * 900_000: 1}  # noqa: S108
+        code = _spawn(
+            None,
+            _line(req),
+            "--grace-seconds",
+            "1",
+            stdout=out_w,
+            stderr=subprocess.DEVNULL,
+        )
+        assert code == 2
+        os.set_blocking(out_r, False)
+        line = os.read(out_r, 1 << 20)
+        assert len(line) < 4096
+        assert json.loads(line)["status_code"] == 422
+    finally:
+        os.close(out_r)
+        os.close(out_w)
+
+
+def test_rejection_delivery_is_bounded_when_stdout_full():
+    out_r, out_w = _full_pipe()
+    try:
+        start = time.monotonic()
+        code = _spawn(
+            None, b"{not json\n", "--grace-seconds", "1", stdout=out_w, stderr=subprocess.DEVNULL
+        )
+        assert code == 2
+        assert time.monotonic() - start < 10
+    finally:
+        os.close(out_r)
+        os.close(out_w)

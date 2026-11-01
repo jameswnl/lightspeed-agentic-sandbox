@@ -5,9 +5,11 @@ Usage: python3 -P -m lightspeed_agentic.step [--grace-seconds N] < request.json
 Contract (see .ai/spec/what/step-cli.md):
 - stdin: one StepRequest JSON object ended by a newline or EOF, at most 1 MiB.
 - stdout: JSONL protocol only — {"v":1,"type":"event","event":{ts,type,data}} lines,
-  then exactly one {"v":1,"type":"result","status_code":...,"body":{...}}.
+  then at most one {"v":1,"type":"result","status_code":...,"body":{...}}
+  (exactly one, complete, on exit 0).
   Everything else written to fd 1 (prints, child processes) lands on stderr.
-- runDir/result.json: the result record, written atomically before the final line.
+- runDir/result.json: the result record, published before the final line by linking a
+  complete fsynced temp file (never partial; a deadline may leave the temp file behind).
 - Exit codes: 0 result written, 2 request rejected (or bad arguments), 3 internal error,
   4 result file written but result line not delivered, 124 hard deadline.
 """

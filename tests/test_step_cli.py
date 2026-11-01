@@ -422,6 +422,14 @@ def test_bad_arguments_exit_2_without_result_line():
     assert proc.stdout == b""
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="PR_SET_DUMPABLE is Linux-only")
+def test_cli_process_is_not_dumpable_on_linux(run_dir):
+    proc = _run(_line(_request(run_dir)), "dumpable")
+
+    assert proc.returncode == 0, proc.stderr.decode()
+    assert _result(_records(proc.stdout))["body"]["summary"] == "dumpable=0"
+
+
 def test_prctl_failure_is_logged(monkeypatch, caplog):
     from lightspeed_agentic import step
 

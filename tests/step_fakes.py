@@ -144,6 +144,14 @@ class MessyExitProvider(MockProvider):
             yield event
 
 
+class DumpableProvider(MockProvider):
+    """Reports prctl(PR_GET_DUMPABLE) for the CLI process as the result summary (Linux only)."""
+
+    async def query(self, _options: ProviderQueryOptions) -> AsyncIterator[ProviderEvent]:
+        dumpable = ctypes.CDLL(None).prctl(3, 0, 0, 0, 0)  # 3 = PR_GET_DUMPABLE
+        yield ResultEvent(text=f'{{"success": true, "summary": "dumpable={dumpable}"}}')
+
+
 class HangProvider(MockProvider):
     async def query(self, _options: ProviderQueryOptions) -> AsyncIterator[ProviderEvent]:
         await asyncio.sleep(3600)
@@ -210,6 +218,8 @@ def make_provider(scenario: str) -> AgentProvider:
             return MessyExitProvider()
         case "keyboard_interrupt":
             return _RaisingProvider(KeyboardInterrupt())
+        case "dumpable":
+            return DumpableProvider()
         case "hang":
             return HangProvider()
         case "stubborn":

@@ -26,7 +26,7 @@ import signal
 import stat
 import sys
 from types import FrameType
-from typing import Any
+from typing import Any, NoReturn
 
 from pydantic import ValidationError
 
@@ -134,12 +134,23 @@ def _hard_deadline(_signum: int, _frame: FrameType | None) -> None:
     os._exit(EXIT_DEADLINE)
 
 
-def _reject_deadline(_signum: int, _frame: FrameType | None) -> None:
-    os._exit(EXIT_REJECTED)
-
-
 def _finalize_deadline(_signum: int, _frame: FrameType | None) -> None:
     os._exit(EXIT_NO_STDOUT if _published else EXIT_DEADLINE)
+
+
+def _arm_exit(code: int, grace_seconds: int) -> None:
+    """Bound what runs next: if it is still running after the grace period, exit with code."""
+    signal.signal(signal.SIGALRM, lambda _signum, _frame: os._exit(code))
+    signal.alarm(max(1, grace_seconds))
+
+
+def _exit_bounded(code: int, grace_seconds: int) -> NoReturn:
+    """Exit without interpreter shutdown (atexit hooks, non-daemon thread joins)."""
+    _arm_exit(code, grace_seconds)
+    for stream in (sys.stdout, sys.stderr):
+        with contextlib.suppress(Exception):
+            stream.flush()
+    os._exit(code)
 
 
 def main(
@@ -147,9 +158,8 @@ def main(
     *,
     provider: AgentProvider | None = None,
     run_root: str = RUN_ROOT,
-) -> int:
-    """Run one step. provider and run_root are test hooks, never set from the request."""
-    global _published
+) -> NoReturn:
+    """Run one step and exit. provider and run_root are test hooks, never set from the request."""
     parser = argparse.ArgumentParser(prog="python3 -P -m lightspeed_agentic.step")
     parser.add_argument(
         "--grace-seconds",
@@ -163,6 +173,17 @@ def main(
         level=logging.INFO, stream=sys.stderr, format="%(levelname)s %(name)s: %(message)s"
     )
     try:
+        code = _run_step(args.grace_seconds, provider, run_root)
+    except BaseException:
+        _arm_exit(EXIT_INTERNAL, args.grace_seconds)
+        logger.exception("[step] internal error")
+        code = EXIT_INTERNAL
+    _exit_bounded(code, args.grace_seconds)
+
+
+def _run_step(grace_seconds: int, provider: AgentProvider | None, run_root: str) -> int:
+    global _published
+    try:
         with contextlib.suppress(PermissionError):  # already a process group leader
             os.setsid()
         # Keep a private fd for the real stdout and point fd 1 at stderr, so only
@@ -170,8 +191,10 @@ def main(
         proto_fd = os.dup(1)
         os.dup2(2, 1)
         raw = sys.stdin.buffer.readline(MAX_STDIN_BYTES + 1)
+        _arm_exit(EXIT_INTERNAL, grace_seconds)
         _harden_process()
     except Exception:
+        _arm_exit(EXIT_INTERNAL, grace_seconds)
         logger.exception("[step] startup failed")
         return EXIT_INTERNAL
 
@@ -199,11 +222,9 @@ def main(
         emit(line)
 
     def reject(status_code: int, body: dict[str, Any]) -> int:
-        signal.signal(signal.SIGALRM, _reject_deadline)
-        signal.alarm(max(1, args.grace_seconds))
+        _arm_exit(EXIT_REJECTED, grace_seconds)
         logger.warning("[step] request rejected (%d): %s", status_code, body["error"])
         emit(json.dumps({"v": 1, "type": "result", "status_code": status_code, "body": body}))
-        signal.alarm(0)
         return EXIT_REJECTED
 
     if len(raw) > MAX_STDIN_BYTES:
@@ -228,7 +249,7 @@ def main(
     try:
         timeout_ms = req.timeout_ms if req.timeout_ms is not None else DEFAULT_TIMEOUT_MS
         signal.signal(signal.SIGALRM, _hard_deadline)
-        signal.alarm(max(1, math.ceil(timeout_ms / 1000) + args.grace_seconds))
+        signal.alarm(max(1, math.ceil(timeout_ms / 1000) + grace_seconds))
         _write_new(dir_fd, "pid", str(os.getpid()))
 
         apply_sdk_patches()
@@ -264,18 +285,17 @@ def main(
         # publication and delivery. alarm() replaces the pending alarm, so no stage
         # runs without one.
         signal.signal(signal.SIGALRM, _finalize_deadline)
-        signal.alarm(max(1, args.grace_seconds))
+        signal.alarm(max(1, grace_seconds))
         _write_result(dir_fd, line)
         _published = True
     except Exception:
+        _arm_exit(EXIT_INTERNAL, grace_seconds)
         logger.exception("[step] internal error")
-        signal.alarm(0)
         return EXIT_INTERNAL
 
-    delivered = emit(line)
-    signal.alarm(0)
-    return EXIT_OK if delivered else EXIT_NO_STDOUT
+    # The finalization deadline stays armed; main() re-arms it for a bounded exit.
+    return EXIT_OK if emit(line) else EXIT_NO_STDOUT
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

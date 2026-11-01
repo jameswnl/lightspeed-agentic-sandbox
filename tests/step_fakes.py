@@ -122,6 +122,28 @@ class FillStderrLaterProvider(_RaisingProvider):
             yield event
 
 
+def _fill_stderr_after_publish_then_block(run_dir: str) -> None:
+    while not os.path.exists(os.path.join(run_dir, "result.json")):
+        time.sleep(0.01)
+    os.set_blocking(2, False)
+    with contextlib.suppress(BlockingIOError):
+        while True:
+            os.write(2, b"e" * 4096)
+    os.set_blocking(2, True)
+    threading.Event().wait()
+
+
+class MessyExitProvider(MockProvider):
+    """Leaves buffered stdout, a stuck non-daemon thread and a full stderr at exit."""
+
+    async def query(self, options: ProviderQueryOptions) -> AsyncIterator[ProviderEvent]:
+        print("buffered, never flushed", end="")
+        run_dir = os.environ["STEP_FAKE_RUN_DIR"]
+        threading.Thread(target=_fill_stderr_after_publish_then_block, args=(run_dir,)).start()
+        async for event in super().query(options):
+            yield event
+
+
 class HangProvider(MockProvider):
     async def query(self, _options: ProviderQueryOptions) -> AsyncIterator[ProviderEvent]:
         await asyncio.sleep(3600)
@@ -184,6 +206,10 @@ def make_provider(scenario: str) -> AgentProvider:
             return SlowPublishProvider()
         case "fill_stderr_later":
             return FillStderrLaterProvider()
+        case "messy_exit":
+            return MessyExitProvider()
+        case "keyboard_interrupt":
+            return _RaisingProvider(KeyboardInterrupt())
         case "hang":
             return HangProvider()
         case "stubborn":
@@ -199,4 +225,4 @@ if __name__ == "__main__":
 
         simulate_required_cache_write_tokens()
     run_root = os.environ.get("STEP_FAKE_RUN_ROOT", RUN_ROOT)
-    sys.exit(main(sys.argv[2:], provider=make_provider(sys.argv[1]), run_root=run_root))
+    main(sys.argv[2:], provider=make_provider(sys.argv[1]), run_root=run_root)

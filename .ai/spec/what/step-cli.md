@@ -8,7 +8,7 @@ The step CLI runs exactly one agent step through a process exec instead of HTTP:
 
 ## Rules
 
-1. **stdin.** Exactly one UTF-8 JSON object, terminated by a newline or EOF. The CLI reads at most 1 MiB (1,048,576 bytes, including the newline) and stops at the first newline, so it never waits for EOF. No CLI timer runs while startup input is read (no alarm is armed until the request is validated): bounding a caller that never sends a line is the exec caller's job (exec timeout).
+1. **stdin.** Exactly one UTF-8 JSON object, terminated by a newline or EOF. The CLI reads at most 1 MiB (1,048,576 bytes, including the newline) and stops at the first newline, so it never waits for EOF. No CLI timer runs while startup input is read (the first alarm is armed right after the request line is read, rule 9): bounding a caller that never sends a line is the exec caller's job (exec timeout).
 2. **StepRequest schema.** `RunRequest` fields plus `stepId` (`^[a-z0-9-]{1,40}$`), `runDir` (string) and optional `traceparent` (W3C header value). `timeout_ms` is capped at 86400000 (24 h). Unknown keys are rejected (`extra="forbid"`). Trace context comes only from `traceparent` on stdin, never from env.
 3. **runDir.** Must be a direct child of `/tmp/lsrun/`, already exist, be a real directory (not a symlink), have mode `0700` and be owned by the current uid. `/tmp/lsrun` itself must be a real directory owned by the current uid or root and not group- or world-writable. The caller creates both; the CLI only checks them. The CLI opens runDir once (`O_DIRECTORY|O_NOFOLLOW`) and does all later file operations relative to that fd.
 4. **stdout protocol.** JSONL only. At startup the CLI duplicates fd 1 into a private protocol handle and points fd 1 at stderr, so prints, child processes and stdout loggers all land on stderr. Protocol lines:
@@ -21,7 +21,12 @@ The step CLI runs exactly one agent step through a process exec instead of HTTP:
 6. **Result file.** Before emitting the final result line, the CLI writes the same result record to `runDir/result.json`. It writes a temp file with `O_CREAT|O_EXCL|O_NOFOLLOW`, calls `fsync`, then hard-links it to `result.json` and removes the temp file. The link fails if `result.json` already exists (including as a symlink, or if it was created mid-run); the CLI then exits 3 without replacing it. The temp file is always removed.
 7. **pid file.** After validation the CLI writes its PID to `runDir/pid`. It calls `setsid()` at startup, so the PID is also its process group ID: `kill -TERM -<pid>` reaches the CLI and every child.
 8. **Soft deadline.** `timeout_ms` (default 300000) is enforced by `execute_run` exactly as on `/run`. A timeout gives a result with status 502 and exit 0.
-9. **Deadlines.** From request validation to exit, some `SIGALRM` is always armed. Deadline handlers only call `os._exit`; they do not log or touch files, so a full stderr pipe or a hung filesystem cannot block them. `os._exit` does not signal children.
+9. **Deadlines.** From the moment the request line is read until the process exits, some `SIGALRM` is always armed, and every stage that can block is covered: startup hardening and its warnings, rejection delivery, the run, publication, result-line delivery, and process exit. Deadline handlers only call `os._exit`; they do not log, take locks or touch files.
+   - **Interruptible waits only.** The deadlines bound waits that a signal can interrupt: pipe writes to a full stdout or stderr, sleeps, socket I/O, a provider that ignores cancellation. They cannot interrupt a syscall in uninterruptible sleep (for example `fsync` or `link` on a hung filesystem). The runner MUST tear down the exec or sandbox as the real upper bound.
+   - **Post-startup alarm:** armed with `--grace-seconds` right after the request line is read. It bounds hardening (including the `prctl` warning) and validation. Firing exits 3. Rejection delivery re-arms it (firing exits 2).
+   - **Bounded exit:** the process never runs normal interpreter shutdown. After the exit code is known, the CLI re-arms `alarm(grace)` (firing exits with that same code), flushes `sys.stdout`/`sys.stderr` best effort, and calls `os._exit`. atexit hooks and joins of non-daemon threads (for example from provider SDKs) are skipped. Our OTEL tracer is shut down inside the run's armed window. openai-agents tracing is disabled by the provider, so skipping its atexit flush loses nothing.
+   - Any `BaseException` that escapes the run (for example `KeyboardInterrupt` from a provider) is logged under an armed alarm and maps to exit 3.
+   - `os._exit` does not signal children.
    - **Hard deadline:** armed after validation at `ceil(timeout_ms/1000) + grace` seconds (`--grace-seconds`, default 30). It bounds the run, including providers that ignore cancellation. Firing exits 124.
    - **Finalization deadline:** when the result is ready, `alarm(grace)` replaces the hard deadline (no gap). It bounds publication (temp write, `fsync`, link) and delivery of the result line. Firing exits 124 if publication has not been recorded as complete, else 4.
    - Publication and exit classification cannot be committed atomically: a deadline can land just after `result.json` is linked. So:
@@ -39,8 +44,9 @@ The step CLI runs exactly one agent step through a process exec instead of HTTP:
     | Code | Meaning |
     |---|---|
     | 0 | Result file written and result line delivered, any `status_code` |
+    | 1 | Python failed before `main()` ran (for example an import error, or an older image without `lightspeed_agentic.step`). Not produced by the CLI itself. |
     | 2 | Request rejected (rule 10: one result line, possibly undelivered if stdout was not drained), or invalid command-line arguments (argparse usage on stderr, no result line). No result file. |
-    | 3 | Internal error, no result line (no promise about `result.json`, rule 9): startup failure (stdin/stdout fd setup, stdin closed, hardening), provider or config construction, pid/result file write, non-strict result JSON |
+    | 3 | Internal error, no result line (no promise about `result.json`, rule 9): startup failure (stdin/stdout fd setup, stdin closed, hardening), post-startup alarm, provider or config construction, pid/result file write, non-strict result JSON, any escaping `BaseException` |
     | 4 | `result.json` complete, but the result line was not delivered: stdout closed, or not drained before the finalization deadline |
     | 124 | Hard or finalization deadline before publication was recorded complete (no promise about `result.json`, rule 9) |
     | 137 / 143 (signal) | Killed |

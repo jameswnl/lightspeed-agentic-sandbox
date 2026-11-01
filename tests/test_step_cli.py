@@ -518,7 +518,8 @@ def test_final_delivery_deadline_exits_with_stderr_full(run_dir):
             os.close(fd)
 
 
-def test_blocked_publication_is_bounded(run_dir):
+def test_blocked_publication_interruptible_wait_is_bounded(run_dir):
+    """Covers interruptible blocking only (a sleeping fsync); see spec rule 9."""
     start = time.monotonic()
     code = _spawn(
         "slow_publish",
@@ -568,3 +569,62 @@ def test_rejection_delivery_is_bounded_when_stdout_full():
     finally:
         os.close(out_r)
         os.close(out_w)
+
+
+def test_exit_is_bounded_with_buffered_output_and_stuck_thread(run_dir, tmp_path):
+    err_r, err_w = os.pipe()
+    out_path = tmp_path / "stdout"
+    try:
+        with out_path.open("wb") as out:
+            proc = subprocess.Popen(  # noqa: S603
+                [*_cmd("messy_exit"), "--grace-seconds", "1"],
+                stdin=subprocess.PIPE,
+                stdout=out,
+                stderr=err_w,
+                cwd="/",
+                env=_env(STEP_FAKE_RUN_DIR=run_dir),
+            )
+            try:
+                assert proc.stdin is not None
+                proc.stdin.write(_line(_request(run_dir)))
+                proc.stdin.close()
+                start = time.monotonic()
+                assert proc.wait(timeout=20) == 0
+                assert time.monotonic() - start < 10
+            finally:
+                proc.kill()
+                proc.wait()
+        assert _result(_records(out_path.read_bytes()))["status_code"] == 200
+    finally:
+        os.close(err_r)
+        os.close(err_w)
+
+
+def test_startup_failure_logging_is_bounded_with_stderr_full():
+    err_r, err_w = _full_pipe()
+    try:
+        proc = subprocess.Popen(  # noqa: S603
+            [*_cmd(None), "--grace-seconds", "1"],
+            stdout=subprocess.DEVNULL,
+            stderr=err_w,
+            cwd="/",
+            env=_env(),
+            preexec_fn=lambda: os.close(0),
+        )
+        try:
+            start = time.monotonic()
+            assert proc.wait(timeout=20) == 3
+            assert time.monotonic() - start < 10
+        finally:
+            proc.kill()
+            proc.wait()
+    finally:
+        os.close(err_r)
+        os.close(err_w)
+
+
+def test_base_exception_maps_to_internal_error(run_dir):
+    proc = _run(_line(_request(run_dir)), "keyboard_interrupt")
+
+    assert proc.returncode == 3, proc.stderr.decode()
+    assert not [r for r in _records(proc.stdout) if r["type"] == "result"]

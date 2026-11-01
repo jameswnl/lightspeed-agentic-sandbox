@@ -8,8 +8,8 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from lightspeed_agentic.routes import _resolve_router_model, build_router, resolve_startup_model
-from lightspeed_agentic.routes.query import _format_context_prefix
+from lightspeed_agentic.routes import build_router, resolve_router_model, resolve_startup_model
+from lightspeed_agentic.run import _format_context_prefix
 from lightspeed_agentic.types import (
     ContentBlockStopEvent,
     ResultEvent,
@@ -342,7 +342,7 @@ def test_format_context_combined_fields() -> None:
 
 
 def test_resolve_router_model_prefers_explicit_model() -> None:
-    assert _resolve_router_model("openai", "custom-model") == "custom-model"
+    assert resolve_router_model("openai", "custom-model") == "custom-model"
 
 
 def test_resolve_startup_model_prefers_lightspeed_model(
@@ -374,13 +374,13 @@ def test_resolve_router_model_prefers_lightspeed_when_both_set(
 ) -> None:
     monkeypatch.setenv("LIGHTSPEED_MODEL", "gpt-5-mini")
     monkeypatch.setenv("OPENAI_MODEL", "gpt-4.1")
-    assert _resolve_router_model("openai") == "gpt-5-mini"
+    assert resolve_router_model("openai") == "gpt-5-mini"
 
 
 def test_resolve_router_model_uses_sdk_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("LIGHTSPEED_MODEL", raising=False)
     monkeypatch.setenv("OPENAI_MODEL", "gpt-4.1")
-    assert _resolve_router_model("openai") == "gpt-4.1"
+    assert resolve_router_model("openai") == "gpt-4.1"
 
 
 def test_resolve_router_model_falls_back_to_lightspeed_model(
@@ -388,7 +388,7 @@ def test_resolve_router_model_falls_back_to_lightspeed_model(
 ) -> None:
     monkeypatch.delenv("OPENAI_MODEL", raising=False)
     monkeypatch.setenv("LIGHTSPEED_MODEL", "gpt-5-mini")
-    assert _resolve_router_model("openai") == "gpt-5-mini"
+    assert resolve_router_model("openai") == "gpt-5-mini"
 
 
 def test_resolve_router_model_uses_default_when_unset(
@@ -398,7 +398,7 @@ def test_resolve_router_model_uses_default_when_unset(
 
     monkeypatch.delenv("OPENAI_MODEL", raising=False)
     monkeypatch.delenv("LIGHTSPEED_MODEL", raising=False)
-    assert _resolve_router_model("openai") == DEFAULT_MODEL
+    assert resolve_router_model("openai") == DEFAULT_MODEL
 
 
 @pytest.mark.asyncio

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import IO, Any
 
@@ -31,10 +32,15 @@ class EventLogger:
     File output is opt-in only; when the env var is unset, no file is written.
     If the configured file cannot be opened, a warning is logged and file
     output is silently skipped.
+
+    When event_sink is given, each JSONL record is also passed to it as a dict.
     """
 
-    def __init__(self, phase: str) -> None:
+    def __init__(
+        self, phase: str, event_sink: Callable[[dict[str, Any]], None] | None = None
+    ) -> None:
         self._phase = phase
+        self._event_sink = event_sink
         self._thinking_buf: list[str] = []
         self._thinking_len = 0
         self._event_file: IO[str] | None = None
@@ -58,15 +64,18 @@ class EventLogger:
 
     def _write_event(self, event_type: str, data: dict[str, Any]) -> None:
         """Write a single JSONL event line and flush."""
-        if self._event_file is None:
+        if self._event_file is None and self._event_sink is None:
             return
         record = {
             "ts": datetime.now(tz=UTC).isoformat(),
             "type": event_type,
             "data": data,
         }
-        self._event_file.write(json.dumps(record) + "\n")
-        self._event_file.flush()
+        if self._event_sink is not None:
+            self._event_sink(record)
+        if self._event_file is not None:
+            self._event_file.write(json.dumps(record) + "\n")
+            self._event_file.flush()
 
     def _flush_thinking(self) -> None:
         if self._thinking_buf:
@@ -95,17 +104,23 @@ class EventLogger:
                     event.name,
                     event.input[:MAX_TOOL_INPUT_LOG],
                 )
-                self._write_event("tool_call", {
-                    "name": event.name,
-                    "input": event.input[:MAX_EVENT_TOOL_INPUT],
-                })
+                self._write_event(
+                    "tool_call",
+                    {
+                        "name": event.name,
+                        "input": event.input[:MAX_EVENT_TOOL_INPUT],
+                    },
+                )
             case "tool_result":
                 logger.info(
                     "[provider:%s] tool_result: %s", self._phase, event.output[:MAX_TOOL_OUTPUT_LOG]
                 )
-                self._write_event("tool_result", {
-                    "output": event.output[:MAX_EVENT_TOOL_OUTPUT],
-                })
+                self._write_event(
+                    "tool_result",
+                    {
+                        "output": event.output[:MAX_EVENT_TOOL_OUTPUT],
+                    },
+                )
             case "result":
                 self._flush_thinking()
                 logger.info(
@@ -118,12 +133,15 @@ class EventLogger:
                     logger.info(
                         "[provider:%s] output: %s", self._phase, event.text[:MAX_RESULT_LOG]
                     )
-                self._write_event("result", {
-                    "text": event.text,
-                    "cost_usd": event.cost_usd,
-                    "input_tokens": event.input_tokens,
-                    "output_tokens": event.output_tokens,
-                })
+                self._write_event(
+                    "result",
+                    {
+                        "text": event.text,
+                        "cost_usd": event.cost_usd,
+                        "input_tokens": event.input_tokens,
+                        "output_tokens": event.output_tokens,
+                    },
+                )
 
     def log_error(self, message: str) -> None:
         """Log an error event to stderr and the JSONL file."""

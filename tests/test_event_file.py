@@ -276,3 +276,25 @@ class TestExistingStderrLoggingPreserved:
             with caplog.at_level("INFO", logger="lightspeed_agentic"):
                 el.log(ToolCallEvent(name="kubectl", input="get pods"))
         assert "kubectl" in caplog.text
+
+
+class TestEventSink:
+    """An event_sink receives the same records as the JSONL file."""
+
+    def test_sink_receives_same_record_as_file(self, tmp_path: Path) -> None:
+        log_path = tmp_path / "events.jsonl"
+        received: list[dict] = []
+        with patch.dict(os.environ, {"AGENT_EVENT_LOG": str(log_path)}):
+            el = EventLogger("test", event_sink=received.append)
+            el.log(ToolCallEvent(name="kubectl", input="get pods"))
+        assert received == [json.loads(log_path.read_text())]
+
+    def test_sink_works_without_file(self) -> None:
+        env = os.environ.copy()
+        env.pop("AGENT_EVENT_LOG", None)
+        received: list[dict] = []
+        with patch.dict(os.environ, env, clear=True):
+            el = EventLogger("test", event_sink=received.append)
+            el.log(ToolResultEvent(output="ok"))
+        assert [r["type"] for r in received] == ["tool_result"]
+        assert received[0]["data"] == {"output": "ok"}

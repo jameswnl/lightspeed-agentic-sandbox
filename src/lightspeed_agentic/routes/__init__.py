@@ -12,7 +12,12 @@ import os
 from fastapi import APIRouter
 
 from lightspeed_agentic.routes.query import register_query_routes
-from lightspeed_agentic.types import DEFAULT_MODEL, AgentProvider
+from lightspeed_agentic.types import (
+    DEFAULT_MAX_TURNS,
+    DEFAULT_MODEL,
+    DEFAULT_TIMEOUT_MS,
+    AgentProvider,
+)
 
 _MODEL_ENV_VARS = {
     "claude": "ANTHROPIC_MODEL",
@@ -31,7 +36,7 @@ def resolve_startup_model(provider_name: str) -> str | None:
     return sdk_model or None
 
 
-def _resolve_router_model(provider_name: str, model: str | None = None) -> str:
+def resolve_router_model(provider_name: str, model: str | None = None) -> str:
     """Resolve model per configuration.md rule 5."""
     if model:
         return model
@@ -50,11 +55,11 @@ def build_router(
     *,
     skills_dir: str = "/app/skills",
     model: str | None = None,
-    max_turns: int = 200,
-    default_timeout_ms: int = 300_000,
+    max_turns: int = DEFAULT_MAX_TURNS,
+    default_timeout_ms: int = DEFAULT_TIMEOUT_MS,
     audit_enabled: bool = False,
 ) -> APIRouter:
-    resolved_model = _resolve_router_model(provider.name, model)
+    resolved_model = resolve_router_model(provider.name, model)
 
     router = APIRouter()
     register_query_routes(

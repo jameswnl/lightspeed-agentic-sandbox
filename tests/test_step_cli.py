@@ -290,3 +290,87 @@ async def test_http_run_parity(run_dir, scenario):
     assert proc.returncode == 0, proc.stderr.decode()
     result = _result(_records(proc.stdout))
     assert (result["status_code"], result["body"]) == (resp.status_code, resp.json())
+
+
+def test_closed_stdout_keeps_result_file_valid(run_dir):
+    read_end, write_end = os.pipe()
+    os.close(read_end)
+    try:
+        proc = subprocess.run(  # noqa: S603
+            _cmd("ok"),
+            input=_line(_request(run_dir)),
+            stdout=write_end,
+            stderr=subprocess.PIPE,
+            cwd="/",
+            env=_env(),
+            timeout=60,
+            check=False,
+        )
+    finally:
+        os.close(write_end)
+
+    assert proc.returncode == 4, proc.stderr.decode()
+    result = json.loads(Path(run_dir, "result.json").read_text())
+    assert result["status_code"] == 200
+    assert result["body"]["summary"] == "mock result"
+
+
+def _reject_constant(name: str) -> None:
+    raise ValueError(f"non-strict JSON constant {name}")
+
+
+def test_nan_never_reaches_protocol_output(run_dir):
+    proc = _run(_line(_request(run_dir)), "nan")
+
+    assert proc.returncode == 0, proc.stderr.decode()
+    for line in proc.stdout.decode().splitlines():
+        json.loads(line, parse_constant=_reject_constant)
+    records = _records(proc.stdout)
+    assert [r["event"]["type"] for r in records if r["type"] == "event"] == ["tool_call"]
+    assert _result(records)["body"] == {"success": True, "summary": "s", "x": None}
+
+
+def test_result_created_mid_run_is_not_overwritten(run_dir):
+    proc = _run(_line(_request(run_dir)), "plant_result", STEP_FAKE_RUN_DIR=run_dir)
+
+    assert proc.returncode == 3, proc.stderr.decode()
+    assert Path(run_dir, "result.json").read_text() == "planted"
+    assert sorted(p.name for p in Path(run_dir).iterdir()) == ["pid", "result.json"]
+
+
+def test_run_root_writable_by_others_rejected(run_dir):
+    RUN_ROOT.chmod(0o777)
+    try:
+        proc = _run(_line(_request(run_dir)), None)
+    finally:
+        RUN_ROOT.chmod(0o700)
+
+    assert proc.returncode == 2
+    assert _result(_records(proc.stdout))["status_code"] == 422
+    assert not Path(run_dir, "pid").exists()
+
+
+def test_run_dir_symlink_rejected(run_dir):
+    link = Path(run_dir + "-link")
+    link.symlink_to(run_dir)
+    try:
+        proc = _run(_line(_request(str(link))), None)
+    finally:
+        link.unlink()
+
+    assert proc.returncode == 2
+    assert _result(_records(proc.stdout))["status_code"] == 422
+
+
+def test_stdin_detached_and_process_hardened(run_dir):
+    proc = _run(_line(_request(run_dir)), "process_state")
+
+    assert proc.returncode == 0, proc.stderr.decode()
+    assert _result(_records(proc.stdout))["body"]["success"] is True
+
+
+def test_timeout_ms_capped(run_dir):
+    proc = _run(_line(_request(run_dir, timeout_ms=10**13)), None)
+
+    assert proc.returncode == 2, proc.stderr.decode()
+    assert _result(_records(proc.stdout))["status_code"] == 422

@@ -9,6 +9,8 @@ from typing import Any, Literal
 TOOL_INPUT_MAX_CHARS = 300
 TOOL_OUTPUT_MAX_CHARS = 500
 DEFAULT_MODEL = "claude-opus-4-6"
+DEFAULT_MAX_TURNS = 200
+DEFAULT_TIMEOUT_MS = 300_000
 
 
 def stringify(value: Any) -> str:

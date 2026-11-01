@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import ctypes
 import logging
+import os
 import subprocess
 import sys
 from collections.abc import AsyncIterator
@@ -64,6 +66,30 @@ class OpenAIUsageProvider(MockProvider):
             yield event
 
 
+class PlantResultProvider(MockProvider):
+    """Creates runDir/result.json mid-run, as a same-uid tool could."""
+
+    async def query(self, options: ProviderQueryOptions) -> AsyncIterator[ProviderEvent]:
+        path = os.path.join(os.environ["STEP_FAKE_RUN_DIR"], "result.json")
+        with open(path, "w") as f:  # noqa: ASYNC230
+            f.write("planted")
+        async for event in super().query(options):
+            yield event
+
+
+class ProcessStateProvider(MockProvider):
+    """Fails the run unless stdin is /dev/null and (on Linux) the process is non-dumpable."""
+
+    async def query(self, options: ProviderQueryOptions) -> AsyncIterator[ProviderEvent]:
+        stdin, devnull = os.fstat(0), os.stat(os.devnull)
+        if (stdin.st_dev, stdin.st_ino) != (devnull.st_dev, devnull.st_ino):
+            raise ValueError("stdin is not /dev/null")
+        if sys.platform == "linux" and ctypes.CDLL(None).prctl(3, 0, 0, 0, 0) != 0:
+            raise ValueError("process is dumpable")  # 3 = PR_GET_DUMPABLE
+        async for event in super().query(options):
+            yield event
+
+
 class HangProvider(MockProvider):
     async def query(self, _options: ProviderQueryOptions) -> AsyncIterator[ProviderEvent]:
         await asyncio.sleep(3600)
@@ -103,6 +129,19 @@ def make_provider(scenario: str) -> AgentProvider:
             return _RaisingProvider(ConnectionError("connection refused"))
         case "agent_error":
             return _RaisingProvider(ValueError("boom"))
+        case "nan":
+            return MockProvider(
+                [
+                    ToolCallEvent(name="Bash", input="oc get pods"),
+                    ResultEvent(
+                        text='{"success": true, "summary": "s", "x": NaN}', cost_usd=float("nan")
+                    ),
+                ]
+            )
+        case "plant_result":
+            return PlantResultProvider()
+        case "process_state":
+            return ProcessStateProvider()
         case "noisy":
             return NoisyProvider()
         case "openai_usage":

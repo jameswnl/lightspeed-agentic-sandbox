@@ -12,20 +12,15 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-# Workaround: openai-agents 0.18.0 default_factory omits cache_write_tokens
-try:
-    from agents.usage import InputTokensDetails
-    if "cache_write_tokens" in InputTokensDetails.model_fields:
-        InputTokensDetails.model_fields["cache_write_tokens"].default = 0
-except Exception:
-    pass
-
 from lightspeed_agentic.config import resolve_sdk
 from lightspeed_agentic.factory import create_provider
 from lightspeed_agentic.health import register_health_routes, register_ready_route
 from lightspeed_agentic.routes import build_router, resolve_startup_model
+from lightspeed_agentic.sdk_patches import apply_sdk_patches
 from lightspeed_agentic.session_messages import SessionMessageConsumer
 from lightspeed_agentic.tracing import init_tracer, shutdown_tracer
+
+apply_sdk_patches()
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)

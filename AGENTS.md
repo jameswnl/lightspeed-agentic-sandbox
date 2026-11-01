@@ -68,6 +68,7 @@ Before changing code, read the relevant spec:
 | System overview, integration boundaries | [system-overview.md](.ai/spec/what/system-overview.md) |
 | Provider adapters | [provider-contract.md](.ai/spec/what/provider-contract.md) |
 | /run endpoint | [run-api.md](.ai/spec/what/run-api.md) |
+| Step CLI (exec path) | [step-cli.md](.ai/spec/what/step-cli.md) |
 | Health probes | [health-probes.md](.ai/spec/what/health-probes.md) |
 | Deployment, env vars, or defaults | [configuration.md](.ai/spec/what/configuration.md) |
 | E2E harness or BDD scenarios | [e2e-testing.md](.ai/spec/what/e2e-testing.md) |
@@ -108,6 +109,8 @@ make eval-report                       # write evals/report.json
 ```text
 src/lightspeed_agentic/
 ├── app.py                # FastAPI entry point, mounts router at /v1/agent
+├── run.py                # execute_run — shared by POST /run and the step CLI
+├── step.py               # Step CLI: python3 -P -m lightspeed_agentic.step
 ├── factory.py            # create_provider(name) — receives SDK name from config.resolve_sdk()
 ├── logging.py            # Event logging helpers for query flows
 ├── tools.py              # Shared tool/skill utilities and defaults

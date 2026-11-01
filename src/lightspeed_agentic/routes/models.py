@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class RunRequest(BaseModel):
@@ -18,3 +18,11 @@ class RunRequest(BaseModel):
 class RunResponse(BaseModel, extra="allow"):
     success: bool
     summary: str
+
+
+class StepRequest(RunRequest, extra="forbid"):
+    """Step CLI stdin payload: RunRequest plus step identity and trace context."""
+
+    stepId: str = Field(pattern=r"^[a-z0-9-]{1,40}$")
+    runDir: str
+    traceparent: str | None = None

@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from lightspeed_agentic.routes import _resolve_router_model, build_router, resolve_startup_model
-from lightspeed_agentic.routes.query import _format_context_prefix
+from lightspeed_agentic.run import _format_context_prefix
 from lightspeed_agentic.types import (
     ContentBlockStopEvent,
     ResultEvent,

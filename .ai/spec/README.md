@@ -17,6 +17,7 @@ These specs define the behavioral rules and codebase navigation for the lightspe
 | [run-api.md](what/run-api.md) | POST /run endpoint: request/response shapes, context prefix, timeouts, error handling |
 | [provider-contract.md](what/provider-contract.md) | AgentProvider ABC, event model, structured output, thin-adapter principle, skills delegation |
 | [configuration.md](what/configuration.md) | Environment variables, provider selection, model resolution, container layout, build system |
+| [step-cli.md](what/step-cli.md) | `python3 -P -m lightspeed_agentic.step`: stdin request, stdout JSONL protocol, result file, exit codes |
 | [health-probes.md](what/health-probes.md) | Liveness (`/health`) and readiness (`/ready`) endpoints, failure mode audit, probe configuration |
 | [e2e-testing.md](what/e2e-testing.md) | Container BDD harness: run modes, live vs unit split, OLS-3220 spike findings |
 

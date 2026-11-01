@@ -166,6 +166,16 @@ helpers.
   provider coverage, and report details.
 - Evals are container-only. If you change eval workspace fixtures, skills, or
   mounted tool behavior, verify the corresponding assumptions in `evals/run.sh`.
+- The fork (`jameswnl/lightspeed-agentic-sandbox`) runs
+  `.github/workflows/ci.yaml` on PRs and pushes to `lcs-main`; it builds no images.
+  `make test` gates. Lint/format/mypy gate only on *new* findings via
+  `scripts/lint_baseline.py` against `scripts/lint_baseline.json` (any finding in
+  a file the PR touches also fails); the broad `make lint`/`make verify` job is
+  advisory until the pre-existing findings are fixed. After fixing some, run
+  `uv run python scripts/lint_baseline.py --write-baseline`.
+- CI installs with `uv sync --frozen` and proves only the environment pinned by
+  the committed `uv.lock`, which is stale versus `pyproject.toml` (e.g. it pins
+  `openai-agents` 0.17.7 while the `openai` extra asks for `>=0.18.0`).
 
 ## Konflux Hermetic Builds
 

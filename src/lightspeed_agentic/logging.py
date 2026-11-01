@@ -104,17 +104,23 @@ class EventLogger:
                     event.name,
                     event.input[:MAX_TOOL_INPUT_LOG],
                 )
-                self._write_event("tool_call", {
-                    "name": event.name,
-                    "input": event.input[:MAX_EVENT_TOOL_INPUT],
-                })
+                self._write_event(
+                    "tool_call",
+                    {
+                        "name": event.name,
+                        "input": event.input[:MAX_EVENT_TOOL_INPUT],
+                    },
+                )
             case "tool_result":
                 logger.info(
                     "[provider:%s] tool_result: %s", self._phase, event.output[:MAX_TOOL_OUTPUT_LOG]
                 )
-                self._write_event("tool_result", {
-                    "output": event.output[:MAX_EVENT_TOOL_OUTPUT],
-                })
+                self._write_event(
+                    "tool_result",
+                    {
+                        "output": event.output[:MAX_EVENT_TOOL_OUTPUT],
+                    },
+                )
             case "result":
                 self._flush_thinking()
                 logger.info(
@@ -127,12 +133,15 @@ class EventLogger:
                     logger.info(
                         "[provider:%s] output: %s", self._phase, event.text[:MAX_RESULT_LOG]
                     )
-                self._write_event("result", {
-                    "text": event.text,
-                    "cost_usd": event.cost_usd,
-                    "input_tokens": event.input_tokens,
-                    "output_tokens": event.output_tokens,
-                })
+                self._write_event(
+                    "result",
+                    {
+                        "text": event.text,
+                        "cost_usd": event.cost_usd,
+                        "input_tokens": event.input_tokens,
+                        "output_tokens": event.output_tokens,
+                    },
+                )
 
     def log_error(self, message: str) -> None:
         """Log an error event to stderr and the JSONL file."""

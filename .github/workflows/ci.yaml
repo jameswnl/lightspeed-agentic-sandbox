@@ -1,0 +1,140 @@
+# Fork-only CI for jameswnl/lightspeed-agentic-sandbox. Upstream CI is Konflux
+# (.tekton/), which does not run on the fork. No image builds, no secrets.
+name: CI
+
+on:
+  pull_request:
+    branches: [lcs-main]
+  push:
+    branches: [lcs-main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Use uv.lock exactly as committed; never re-resolve it (it is stale vs pyproject.toml).
+  UV_FROZEN: "1"
+  # Use the interpreter from actions/setup-python (.python-version), never download one.
+  UV_PYTHON_DOWNLOADS: never
+
+jobs:
+  test:
+    name: test (make test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version-file: .python-version
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.9.30"
+          checksum: 8b3762374972daa7a74bbc6896cc73229ca69a07403dd9f9ea3805a51ffd7582
+          enable-cache: false
+      - name: Install from frozen lock
+        run: uv sync --frozen --extra dev
+      - run: make test
+      - name: Fail if uv.lock or requirements*.txt changed
+        if: ${{ !cancelled() }}
+        run: |
+          if [ -n "$(git status --porcelain -- uv.lock 'requirements*.txt')" ]; then
+            git status --porcelain -- uv.lock 'requirements*.txt'
+            echo "::error::uv.lock or requirements*.txt was modified during CI"
+            exit 1
+          fi
+
+  lint-baseline:
+    name: lint baseline (no new ruff/format/mypy findings)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version-file: .python-version
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.9.30"
+          checksum: 8b3762374972daa7a74bbc6896cc73229ca69a07403dd9f9ea3805a51ffd7582
+          enable-cache: false
+      - name: Install from frozen lock
+        run: uv sync --frozen --extra dev
+      - name: List changed files
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          base="${PR_BASE_SHA:-$PUSH_BEFORE_SHA}"
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+            : > "$RUNNER_TEMP/changed-files.txt"
+          else
+            git diff --name-only --diff-filter=d "$base...HEAD" > "$RUNNER_TEMP/changed-files.txt"
+          fi
+          cat "$RUNNER_TEMP/changed-files.txt"
+      - name: Compare diagnostics with scripts/lint_baseline.json
+        run: >-
+          uv run python scripts/lint_baseline.py
+          --changed-files "$RUNNER_TEMP/changed-files.txt"
+          --raw-dir lint-output
+      - name: Upload raw tool output
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lint-output
+          path: lint-output/
+          if-no-files-found: warn
+      - name: Fail if uv.lock or requirements*.txt changed
+        if: ${{ !cancelled() }}
+        run: |
+          if [ -n "$(git status --porcelain -- uv.lock 'requirements*.txt')" ]; then
+            git status --porcelain -- uv.lock 'requirements*.txt'
+            echo "::error::uv.lock or requirements*.txt was modified during CI"
+            exit 1
+          fi
+
+  advisory:
+    name: "advisory: make lint + make verify (non-gating; pre-existing findings)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version-file: .python-version
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.9.30"
+          checksum: 8b3762374972daa7a74bbc6896cc73229ca69a07403dd9f9ea3805a51ffd7582
+          enable-cache: false
+      - name: Install from frozen lock
+        run: uv sync --frozen --extra dev
+      - name: make lint / make verify (advisory)
+        run: |
+          for target in lint verify; do
+            if make "$target"; then
+              echo "- \`make $target\`: clean" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::warning::ADVISORY: make $target reported findings (not a pass; gating is the lint-baseline job)"
+              echo "- \`make $target\`: **ADVISORY — findings reported (not a pass)**" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+      - name: Fail if uv.lock or requirements*.txt changed
+        if: ${{ !cancelled() }}
+        run: |
+          if [ -n "$(git status --porcelain -- uv.lock 'requirements*.txt')" ]; then
+            git status --porcelain -- uv.lock 'requirements*.txt'
+            echo "::error::uv.lock or requirements*.txt was modified during CI"
+            exit 1
+          fi
